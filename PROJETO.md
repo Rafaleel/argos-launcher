@@ -99,6 +99,7 @@ frontend (React)  ──HTTP──>  backend (FastAPI)
 - Uma subpasta desmontada dentro de uma pasta configurada saudável perde as linhas dela (voltam quando a pasta volta, com novo hash).
 - Fase 2: `sessions.game_id` não tem regra de remoção e as chaves estrangeiras estão ligadas; apagar um jogo já jogado vai falhar. Trocar por marcar arquivos como ausentes.
 - O scan é uma requisição única e longa; em ISOs muito grandes o navegador pode desistir (o scan continua e grava o resultado).
+- Uma pasta configurada que fica vazia (último jogo apagado ou movido para outra pasta) mantém as linhas antigas, com aviso, porque não dá para distinguir de um disco desmontado. Para limpar, tire a pasta das configurações.
 - Lista de pastas de ROMs vazia é recusada: a biblioteca não pode ser zerada pela interface.
 
 ## 5. Ordem de construção

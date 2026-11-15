@@ -228,3 +228,18 @@ def test_cue_with_dotdot_path_still_joins_track(conn, tmp_path):
     (roms / "g.cue").write_bytes(b'FILE "disc/../disc/t.bin" BINARY\n')
     scan(conn, [str(roms)], [])
     assert len(games(conn)) == 1
+
+
+def test_unreadable_file_keeps_its_row(conn, tmp_path):
+    roms = tmp_path / "roms"
+    roms.mkdir()
+    a, b = roms / "a.gba", roms / "b.gba"
+    a.write_bytes(b"a"), b.write_bytes(b"b")
+    scan(conn, [str(roms)], [])
+    a.write_bytes(b"changed")  # new size, so it must be re-read
+    a.chmod(0)
+    try:
+        result = scan(conn, [str(roms)], [])
+    finally:
+        a.chmod(0o644)
+    assert {g["title"] for g in games(conn)} == {"a", "b"} and result["errors"]
