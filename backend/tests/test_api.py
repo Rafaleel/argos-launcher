@@ -107,3 +107,24 @@ def test_scan_with_no_folders_is_refused_and_keeps_games(client, tmp_path):
     client.put("/api/settings", json={"rom_dirs": [], "dat_dirs": []})
     assert client.post("/api/scan").status_code == 422
     assert len(client.get("/api/games").json()) == 2
+
+
+def test_connection_can_be_used_from_another_thread():
+    # FastAPI creates the dependency in one worker thread and runs the endpoint in another
+    import threading
+
+    from app.db import connect
+
+    conn = connect()
+    errors = []
+
+    def use():
+        try:
+            conn.execute("SELECT 1").fetchone()
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    t = threading.Thread(target=use)
+    t.start()
+    t.join()
+    assert errors == []
