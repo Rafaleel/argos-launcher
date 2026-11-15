@@ -60,6 +60,7 @@ def scan(conn: sqlite3.Connection, rom_dirs: list[str], dat_dirs: list[str]) -> 
                         cached += 1
                     seen.add(path)
                 except OSError as exc:
+                    seen.add(path)  # still on disk, just unreadable now: keep its row
                     errors.append(f"Não foi possível ler {printable(path)}: {exc.strerror}")
         protected += unreadable
         if found_here:
