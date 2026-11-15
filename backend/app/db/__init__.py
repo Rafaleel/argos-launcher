@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 
 from app.config import db_path
 
@@ -66,8 +67,8 @@ CREATE TABLE IF NOT EXISTS progress_estimates (
 """
 
 
-def connect() -> sqlite3.Connection:
-    path = db_path()
+def connect(path: str | Path | None = None) -> sqlite3.Connection:
+    path = Path(path) if path else db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # FastAPI opens the connection in one worker thread and runs the endpoint in
     # another; a request uses it from one thread at a time.

@@ -11,3 +11,7 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #8884; }
 .msg { padding: 8px 12px; margin: 8px 0; border-radius: 4px; background: #8882; }
 .err { background: #d334; }
 .muted { opacity: 0.7; }
+.bar { height: 10px; background: #4a90d9; border-radius: 3px; min-width: 1px; }
+.bar-row { display: grid; grid-template-columns: 9rem 1fr 6rem; gap: 8px; align-items: center; padding: 2px 0; }
+.bar-row span:last-child { text-align: right; }
+.badge { font-size: 0.8rem; padding: 1px 8px; border-radius: 10px; background: #2a9d4a33; margin-left: 8px; }
