@@ -137,7 +137,7 @@ def _monitor(db_file: Path, session_id: int | None, game_id: int, sid: int) -> N
             last_seen = now
             if (now - last_beat).total_seconds() >= BEAT:
                 # A busy database just skips this beat; it must not end the monitor.
-                _write(conn, "UPDATE sessions SET last_heartbeat = ? WHERE id = ?", (iso(now), session_id), 1)
+                _write(conn, "UPDATE sessions SET last_heartbeat = ? WHERE id = ? AND ended_at IS NULL", (iso(now), session_id), 1)
                 last_beat = now
     finally:
         if session_id is not None:
