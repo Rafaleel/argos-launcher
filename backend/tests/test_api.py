@@ -128,3 +128,64 @@ def test_connection_can_be_used_from_another_thread():
     t.start()
     t.join()
     assert errors == []
+
+
+def test_play_records_a_session_and_blocks_a_second_open(client, tmp_path):
+    prepare(client, tmp_path)
+    exe = tmp_path / "slow-emu"
+    exe.write_text("#!/bin/sh\nsleep 1.5\n")
+    exe.chmod(0o755)
+    client.put("/api/emulators", json={"platform": NES, "executable": str(exe), "args": ["{rom}"]})
+    gid = next(g["id"] for g in client.get("/api/games").json() if g["title"] == "Mario (USA)")
+    first = client.post(f"/api/games/{gid}/play")
+    assert first.status_code == 200 and first.json()["session_id"] > 0
+    assert client.get("/api/games").json()[0]["playing"] is True
+    assert client.post(f"/api/games/{gid}/play").status_code == 409
+
+
+def test_stats_endpoints_report_recorded_time(client, tmp_path):
+    from app.db import connect
+
+    prepare(client, tmp_path)
+    gid = next(g["id"] for g in client.get("/api/games").json() if g["title"] == "Mario (USA)")
+    c = connect()
+    c.execute("INSERT INTO sessions (game_id, started_at, ended_at) VALUES (?, '2026-05-10T12:00:00Z', '2026-05-10T13:00:00Z')", (gid,))
+    c.commit()
+    c.close()
+    assert next(g for g in client.get("/api/games").json() if g["id"] == gid)["seconds_played"] == 3600
+    assert client.get("/api/stats/games").json()[0]["seconds"] == 3600
+    assert client.get("/api/stats/platforms").json() == [{"platform": NES, "seconds": 3600}]
+    assert client.get("/api/stats/periods?by=month&n=60").status_code == 200
+    assert client.get("/api/stats/periods?by=year").status_code == 422
+
+
+def test_played_game_survives_losing_its_files_and_scan_does_not_fail(client, tmp_path):
+    import os
+
+    from app.db import connect
+
+    prepare(client, tmp_path)
+    gid = next(g["id"] for g in client.get("/api/games").json() if g["title"] == "Mario (USA)")
+    c = connect()
+    c.execute("INSERT INTO sessions (game_id, started_at, ended_at) VALUES (?, '2026-05-10T12:00:00Z', '2026-05-10T13:00:00Z')", (gid,))
+    c.commit()
+    c.close()
+    os.remove(tmp_path / "roms" / "mario.nes")
+    r = client.post("/api/scan")
+    assert r.status_code == 200  # a played game used to break the delete (foreign key)
+    assert gid not in [g["id"] for g in client.get("/api/games").json()]  # no files, no Jogar
+    assert client.get("/api/stats/games").json()[0]["seconds"] == 3600  # history kept
+
+
+def test_startup_closes_orphan_sessions(tmp_path):
+    from app.db import connect
+
+    c = connect()
+    gid = c.execute("INSERT INTO games (key, title, platform, identified) VALUES ('k', 'G', 'P', 1)").lastrowid
+    c.execute("INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (?, '2026-01-01T10:00:00Z', '2026-01-01T10:30:00Z')", (gid,))
+    c.commit()
+    c.close()
+    with TestClient(app, base_url="http://127.0.0.1"):  # runs the lifespan
+        pass
+    c = connect()
+    assert c.execute("SELECT ended_at FROM sessions").fetchone()["ended_at"] == "2026-01-01T10:30:00Z"
