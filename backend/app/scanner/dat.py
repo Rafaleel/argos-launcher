@@ -53,7 +53,7 @@ def load_dats(dirs: list[str]) -> tuple[DatIndex, list[str]]:
     index, errors = DatIndex(), []
     for root in dirs:
         if not os.path.isdir(root):
-            errors.append(f"DAT folder not found: {root}")
+            errors.append(f"DAT folder not found: {os.fsencode(root).decode('utf-8', 'replace')}")
             continue
         for dirpath, _, names in os.walk(root):
             for name in sorted(names):
@@ -62,5 +62,5 @@ def load_dats(dirs: list[str]) -> tuple[DatIndex, list[str]]:
                     try:
                         parse_dat(full, index)
                     except (ET.ParseError, OSError, ValueError) as exc:
-                        errors.append(f"Bad DAT {full}: {exc}")
+                        errors.append(f"Bad DAT {os.fsencode(full).decode('utf-8', 'replace')}: {exc}")
     return index, errors

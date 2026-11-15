@@ -11,6 +11,7 @@ export default function App() {
   const [datDirs, setDatDirs] = useState("");
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [loaded, setLoaded] = useState(false); // never save a textarea that did not load
 
   const show = (text: string, error = false) => setMsg({ text, error });
   const fail = (e: unknown) => show(e instanceof Error ? e.message : String(e), true);
@@ -26,6 +27,7 @@ export default function App() {
     api.settings().then((s) => {
       setRomDirs(s.rom_dirs.join("\n"));
       setDatDirs(s.dat_dirs.join("\n"));
+      setLoaded(true);
     }).catch(fail);
     refresh().catch(fail);
   }, [refresh]);
@@ -59,7 +61,7 @@ export default function App() {
         <textarea rows={3} value={romDirs} onChange={(e) => setRomDirs(e.target.value)} />
         <label>Pastas de DATs No-Intro/Redump (uma por linha)</label>
         <textarea rows={2} value={datDirs} onChange={(e) => setDatDirs(e.target.value)} />
-        <p><button onClick={scan} disabled={scanning}>{scanning ? "Escaneando…" : "Salvar e escanear"}</button></p>
+        <p><button onClick={scan} disabled={scanning || !loaded}>{scanning ? "Escaneando…" : "Salvar e escanear"}</button></p>
         <p className="muted">Só imagens cruas (bin/cue, iso, ROMs soltas) são identificadas. Arquivos zip, CHD e RVZ aparecem como não identificados.</p>
       </section>
 
