@@ -57,7 +57,8 @@ def start_session(conn: sqlite3.Connection, game_id: int, launch_fn) -> tuple[in
             raise AlreadyPlaying()
         # Record first: if the database is busy we fail before an emulator exists,
         # instead of leaving an untracked emulator that can be opened again.
-        now = iso(utc_now())
+        started = utc_now()
+        now = iso(started)
         session_id = conn.execute(
             "INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (?, ?, ?)", (game_id, now, now)
         ).lastrowid
@@ -65,14 +66,31 @@ def start_session(conn: sqlite3.Connection, game_id: int, launch_fn) -> tuple[in
         try:
             pid = launch_fn()
         except BaseException:
-            conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-            conn.commit()
+            try:
+                conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+                conn.commit()
+            except sqlite3.Error:
+                # Busy database: keep the real error (e.g. files missing) and retry the
+                # cleanup in the background, or the game would stay "already open".
+                _spawn(_discard, db_path(), session_id)
             raise
     # Bind the database now, so a monitor outliving its caller never reopens another file.
-    thread = threading.Thread(target=_monitor, args=(db_path(), session_id, game_id, pid), daemon=True)
+    _spawn(_monitor, db_path(), session_id, game_id, pid, started)
+    return pid, session_id
+
+
+def _spawn(target, *args) -> None:
+    thread = threading.Thread(target=target, args=args, daemon=True)
     thread.start()
     MONITORS.append(thread)
-    return pid, session_id
+
+
+def _discard(db_file: Path, session_id: int) -> None:
+    """Delete a session whose launch failed, retrying while the database is busy."""
+    conn = _open_db(db_file)
+    if conn is not None:
+        _write(conn, "DELETE FROM sessions WHERE id = ?", (session_id,), 60)
+        conn.close()
 
 
 def close_orphans(conn: sqlite3.Connection) -> int:
@@ -121,12 +139,13 @@ def _open_db(db_file: Path) -> sqlite3.Connection | None:
     return None
 
 
-def _monitor(db_file: Path, session_id: int | None, game_id: int, sid: int) -> None:
+def _monitor(db_file: Path, session_id: int | None, game_id: int, sid: int, started: datetime) -> None:
     conn = _open_db(db_file)
     if conn is None:
         return  # the orphan sweep at the next start closes the session
     try:
-        last_seen = last_beat = utc_now()
+        # Never earlier than the start start_session recorded, whatever the clock did since.
+        last_seen = last_beat = max(utc_now(), started)
         while session_alive(sid):
             time.sleep(POLL)
             # shortcut: a clock stepped back freezes the count until it catches up
