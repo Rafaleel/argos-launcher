@@ -48,7 +48,12 @@ export default function App() {
   const anyPlaying = games.some((g) => g.playing);
   useEffect(() => {
     if (!anyPlaying) return;
-    const id = setInterval(() => refresh().catch(fail), 5000);
+    let busy = false;
+    const id = setInterval(() => {
+      if (busy) return; // a slow answer must not pile up requests
+      busy = true;
+      refresh().catch(fail).finally(() => { busy = false; });
+    }, 5000);
     return () => clearInterval(id);
   }, [anyPlaying, refresh]);
 
@@ -114,15 +119,15 @@ export default function App() {
         {gameTime.length === 0 ? <p className="muted">Ainda não há tempo registrado. Abra um jogo para começar.</p> : (
           <>
             <h3>Por plataforma</h3>
-            <Bars rows={platformTime.map((p) => ({ label: p.platform ?? "Não identificado", seconds: p.seconds }))} />
+            <Bars rows={platformTime.map((p) => ({ id: p.platform ?? "-", label: p.platform ?? "Não identificado", seconds: p.seconds }))} />
             <h3>Por jogo</h3>
-            <Bars rows={gameTime.slice(0, 10).map((g) => ({ label: g.title, seconds: g.seconds }))} />
+            <Bars rows={gameTime.slice(0, 10).map((g) => ({ id: String(g.game_id), label: g.title, seconds: g.seconds }))} />
             <h3>Por período
               <select value={by} onChange={(e) => setBy(e.target.value as By)} style={{ width: "auto", marginLeft: 8 }}>
                 <option value="day">Dia</option><option value="week">Semana</option><option value="month">Mês</option>
               </select>
             </h3>
-            <Bars rows={periods.map((p) => ({ label: p.period, seconds: p.seconds }))} />
+            <Bars rows={periods.map((p) => ({ id: p.period, label: p.period, seconds: p.seconds }))} />
           </>
         )}
       </section>
@@ -154,12 +159,12 @@ function EmulatorRow({ platform, current, onSave }: { platform: string; current?
   );
 }
 
-function Bars({ rows }: { rows: { label: string; seconds: number }[] }) {
+function Bars({ rows }: { rows: { id: string; label: string; seconds: number }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.seconds));
   return (
     <div>
       {rows.map((r) => (
-        <div className="bar-row" key={r.label}>
+        <div className="bar-row" key={r.id}>
           <span title={r.label} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</span>
           <div className="bar" style={{ width: `${(r.seconds / max) * 100}%` }} />
           <span>{formatDuration(r.seconds)}</span>

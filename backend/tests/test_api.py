@@ -1,3 +1,4 @@
+import os
 import hashlib
 import json
 import zlib
@@ -189,3 +190,56 @@ def test_startup_closes_orphan_sessions(tmp_path):
         pass
     c = connect()
     assert c.execute("SELECT ended_at FROM sessions").fetchone()["ended_at"] == "2026-01-01T10:30:00Z"
+
+
+def test_play_with_missing_files_is_409_and_leaves_no_session(client, tmp_path):
+    import os
+
+    from app.db import connect
+
+    prepare(client, tmp_path)
+    (tmp_path / "roms" / "keep.gba").write_bytes(b"k")
+    client.post("/api/scan")
+    client.put("/api/emulators", json={"platform": NES, "executable": fake_emulator(tmp_path), "args": [str(tmp_path / "o"), "{rom}"]})
+    gid = next(g["id"] for g in client.get("/api/games").json() if g["title"] == "Mario (USA)")
+    os.remove(tmp_path / "roms" / "mario.nes")  # file gone, scan has not run yet
+    r = client.post(f"/api/games/{gid}/play")
+    assert r.status_code == 409
+    assert connect().execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+
+
+def test_busy_database_fails_before_any_emulator_starts(client, tmp_path, monkeypatch):
+    import sqlite3
+
+    from app import db
+
+    prepare(client, tmp_path)
+    out = tmp_path / "ran.json"
+    client.put("/api/emulators", json={"platform": NES, "executable": fake_emulator(tmp_path), "args": [str(out), "{rom}"]})
+    gid = next(g["id"] for g in client.get("/api/games").json() if g["title"] == "Mario (USA)")
+    monkeypatch.setattr(db, "BUSY_TIMEOUT", 0.2)
+    blocker = sqlite3.connect(os.environ["ARGOS_DB"], timeout=0)
+    blocker.execute("BEGIN IMMEDIATE")
+    try:
+        r = client.post(f"/api/games/{gid}/play")
+    finally:
+        blocker.rollback()
+        blocker.close()
+    assert r.status_code == 503 and not out.exists()  # no untracked emulator
+    assert client.post(f"/api/games/{gid}/play").status_code == 200  # and it can still be played
+
+
+def test_period_count_is_validated(client):
+    assert client.get("/api/stats/periods?by=day&n=-3").status_code == 422
+    assert client.get("/api/stats/periods?by=month&n=30000").status_code == 422
+    assert client.get("/api/stats/periods?by=day&n=366").status_code == 200
+
+
+def test_games_listing_uses_the_sessions_index(conn):
+    plan = " ".join(
+        r[3]
+        for r in conn.execute(
+            "EXPLAIN QUERY PLAN SELECT EXISTS (SELECT 1 FROM sessions s WHERE s.game_id = 1 AND s.ended_at IS NULL)"
+        )
+    )
+    assert "idx_sessions_game" in plan  # a full scan per game made /api/games quadratic

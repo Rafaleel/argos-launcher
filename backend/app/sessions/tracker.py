@@ -55,13 +55,19 @@ def start_session(conn: sqlite3.Connection, game_id: int, launch_fn) -> tuple[in
     with _play_lock:
         if conn.execute("SELECT 1 FROM sessions WHERE game_id = ? AND ended_at IS NULL", (game_id,)).fetchone():
             raise AlreadyPlaying()
-        pid = launch_fn()
+        # Record first: if the database is busy we fail before an emulator exists,
+        # instead of leaving an untracked emulator that can be opened again.
         now = iso(utc_now())
-        cur = conn.execute(
+        session_id = conn.execute(
             "INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (?, ?, ?)", (game_id, now, now)
-        )
+        ).lastrowid
         conn.commit()
-        session_id = cur.lastrowid
+        try:
+            pid = launch_fn()
+        except BaseException:
+            conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            conn.commit()
+            raise
     # Bind the database now, so a monitor outliving its caller never reopens another file.
     thread = threading.Thread(target=_monitor, args=(db_path(), session_id, game_id, pid), daemon=True)
     thread.start()
@@ -123,7 +129,9 @@ def _monitor(db_file: Path, session_id: int | None, game_id: int, sid: int) -> N
         last_seen = last_beat = utc_now()
         while session_alive(sid):
             time.sleep(POLL)
-            now = utc_now()
+            # shortcut: a clock stepped back freezes the count until it catches up
+            # (time is lost, never invented); revisit if NTP steps become common.
+            now = max(utc_now(), last_seen)
             if (now - last_seen).total_seconds() > GAP:
                 # Suspended: do not count the sleep as play time.
                 _end(conn, session_id, last_seen)
@@ -141,5 +149,5 @@ def _monitor(db_file: Path, session_id: int | None, game_id: int, sid: int) -> N
                 last_beat = now
     finally:
         if session_id is not None:
-            _end(conn, session_id, utc_now())
+            _end(conn, session_id, max(utc_now(), last_seen))
         conn.close()
