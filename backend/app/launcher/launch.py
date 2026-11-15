@@ -1,0 +1,44 @@
+import os
+import subprocess
+
+
+class LaunchError(Exception):
+    pass
+
+
+def playable_file(paths: list[str]) -> str:
+    """A game with a .cue plays from the .cue; otherwise from its first file."""
+    if not paths:
+        raise LaunchError("game has no files")
+    cues = sorted(p for p in paths if p.lower().endswith(".cue"))
+    return os.path.abspath(cues[0] if cues else sorted(paths)[0])
+
+
+def build_argv(executable: str, args: list[str], rom: str) -> list[str]:
+    # str.replace per argument, never a shell: a hostile file name stays one
+    # plain argument. rom is absolute, so it can never look like an option.
+    return [executable] + [a.replace("{rom}", rom) for a in args]
+
+
+def validate_executable(executable: str) -> None:
+    if not os.path.isabs(executable):
+        raise LaunchError("emulator path must be absolute")
+    if not (os.path.isfile(executable) and os.access(executable, os.X_OK)):
+        raise LaunchError("emulator path is not an executable file")
+
+
+def launch(executable: str, args: list[str], paths: list[str]) -> int:
+    validate_executable(executable)
+    argv = build_argv(executable, args, playable_file(paths))
+    try:
+        proc = subprocess.Popen(
+            argv,
+            shell=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        raise LaunchError(f"could not start emulator: {exc}") from exc
+    return proc.pid
