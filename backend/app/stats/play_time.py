@@ -70,10 +70,12 @@ def _key(day: date, by: str) -> str:
 
 def _recent_keys(today: date, by: str, n: int) -> list[str]:
     keys: list[str] = []
+    seen: set[str] = set()
     cur = today
     while len(keys) < n:
         key = _key(cur, by)
-        if key not in keys:
+        if key not in seen:
+            seen.add(key)
             keys.append(key)
         if by == "month":
             cur = cur.replace(day=1) - timedelta(days=1)

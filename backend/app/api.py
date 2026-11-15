@@ -4,11 +4,11 @@ import sqlite3
 import threading
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.db import connect
-from app.launcher.launch import LaunchError, launch, validate_executable
+from app.launcher.launch import FilesMissing, LaunchError, launch, validate_executable
 from app.scanner.scan import scan
 from app.sessions.tracker import AlreadyPlaying, start_session
 from app.stats import play_time
@@ -157,6 +157,10 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
         )
     except AlreadyPlaying:
         raise HTTPException(409, "Este jogo já está aberto") from None
+    except FilesMissing as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except sqlite3.OperationalError:
+        raise HTTPException(503, "Banco de dados ocupado; tente de novo") from None
     except LaunchError as exc:
         raise HTTPException(500, str(exc)) from exc
     return {"pid": pid, "session_id": session_id}
@@ -179,7 +183,7 @@ def stats_platforms(conn: sqlite3.Connection = Conn) -> list[dict]:
 
 
 @router.get("/stats/periods")
-def stats_periods(by: str = "day", n: int = 0, conn: sqlite3.Connection = Conn) -> list[dict]:
+def stats_periods(by: str = "day", n: int = Query(0, ge=0, le=366), conn: sqlite3.Connection = Conn) -> list[dict]:
     if by not in ("day", "week", "month"):
         raise HTTPException(422, "by deve ser day, week ou month")
     return play_time.per_period(conn, by, n or {"day": 14, "week": 12, "month": 12}[by])

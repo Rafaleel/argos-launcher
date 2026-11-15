@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS signals (
     payload TEXT NOT NULL,
     timestamp TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_sessions_game ON sessions(game_id, ended_at);
+CREATE INDEX IF NOT EXISTS idx_files_game ON files(game_id);
 CREATE TABLE IF NOT EXISTS progress_estimates (
     id INTEGER PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES games(id),
@@ -67,12 +69,15 @@ CREATE TABLE IF NOT EXISTS progress_estimates (
 """
 
 
+BUSY_TIMEOUT = 5.0  # seconds a writer waits for the lock (tests shorten it)
+
+
 def connect(path: str | Path | None = None) -> sqlite3.Connection:
     path = Path(path) if path else db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # FastAPI opens the connection in one worker thread and runs the endpoint in
     # another; a request uses it from one thread at a time.
-    conn = sqlite3.connect(path, check_same_thread=False)
+    conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")

@@ -165,3 +165,20 @@ def test_late_heartbeat_does_not_touch_a_closed_session(conn, tmp_path):
     after = sessions(conn)[0]
     assert after["ended_at"] == closed["ended_at"] and after["last_heartbeat"] == closed["last_heartbeat"]
     wait_monitors()
+
+
+def test_clock_stepping_back_never_records_a_negative_session(conn, tmp_path, monkeypatch):
+    g = add_game(conn)
+    real = tracker.utc_now
+    calls = {"n": 0}
+
+    def stepping_back():
+        calls["n"] += 1
+        return real() - (timedelta(hours=2) if calls["n"] > 4 else timedelta())
+
+    exe = script(tmp_path, "import time; time.sleep(1.2)")
+    monkeypatch.setattr(tracker, "utc_now", stepping_back)
+    start_session(conn, g, lambda: launch(exe, [], [exe]))
+    wait_monitors()
+    [row] = sessions(conn)  # raw row: the stats code would hide a bad one by clamping
+    assert row["ended_at"] >= row["started_at"]

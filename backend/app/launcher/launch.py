@@ -7,6 +7,10 @@ class LaunchError(Exception):
     pass
 
 
+class FilesMissing(LaunchError):
+    pass
+
+
 def playable_file(paths: list[str]) -> str:
     """A game with a .cue plays from the .cue; otherwise from its first file."""
     if not paths:
@@ -33,7 +37,7 @@ def launch(executable: str, args: list[str], paths: list[str]) -> int:
     # Files on an unmounted drive are still in the library but cannot be played.
     present = [p for p in paths if os.path.exists(p)]
     if not present:
-        raise LaunchError("os arquivos do jogo não foram encontrados; escaneie a biblioteca de novo")
+        raise FilesMissing("os arquivos do jogo não foram encontrados; escaneie a biblioteca de novo")
     argv = build_argv(executable, args, playable_file(present))
     try:
         proc = subprocess.Popen(
