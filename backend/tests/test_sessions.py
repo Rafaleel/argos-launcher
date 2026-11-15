@@ -182,3 +182,44 @@ def test_clock_stepping_back_never_records_a_negative_session(conn, tmp_path, mo
     wait_monitors()
     [row] = sessions(conn)  # raw row: the stats code would hide a bad one by clamping
     assert row["ended_at"] >= row["started_at"]
+
+
+def test_failed_launch_with_a_busy_database_does_not_lock_the_game(conn, monkeypatch):
+    import sqlite3
+
+    from app import db
+    from app.launcher.launch import FilesMissing
+
+    g = add_game(conn)
+    monkeypatch.setattr(db, "BUSY_TIMEOUT", 0.2)
+    blocker = sqlite3.connect(os.environ["ARGOS_DB"], timeout=0)
+
+    def launch_that_fails_while_the_db_is_busy():
+        blocker.execute("BEGIN IMMEDIATE")  # another writer arrives after our INSERT
+        raise FilesMissing("sumiram")
+
+    with pytest.raises(FilesMissing):  # the real error, not "database is locked"
+        start_session(conn, g, launch_that_fails_while_the_db_is_busy)
+    blocker.rollback()
+    blocker.close()
+    wait_monitors()  # the background cleanup finishes
+    assert sessions(conn) == []
+    with pytest.raises(FilesMissing):  # and the game is playable again, not "already open"
+        start_session(conn, g, lambda: (_ for _ in ()).throw(FilesMissing("sumiram")))
+
+
+def test_clock_stepping_back_before_the_monitor_starts(conn, tmp_path, monkeypatch):
+    g = add_game(conn)
+    real = tracker.utc_now
+    calls = {"n": 0}
+
+    def back_after_the_insert():
+        calls["n"] += 1
+        return real() - (timedelta(minutes=10) if calls["n"] > 1 else timedelta())
+
+    exe = script(tmp_path, "pass")
+    monkeypatch.setattr(tracker, "utc_now", back_after_the_insert)
+    start_session(conn, g, lambda: launch(exe, [], [exe]))
+    wait_monitors()
+    [row] = sessions(conn)
+    assert row["ended_at"] >= row["started_at"]

@@ -101,7 +101,7 @@ frontend (React)  ──HTTP──>  backend (FastAPI)
 - Uma atualização de DAT que renomeia o título dá ao jogo um novo id; o histórico fica no nome antigo.
 - Se o app cair com o emulador aberto, o tempo depois do último batimento (até 15 s) se perde, e o que seguir rodando não é retomado.
 - Se o relógio do sistema voltar no meio de uma sessão, a contagem congela até ele alcançar o último valor (tempo se perde, nunca é inventado).
-- Vários workers do uvicorn não são suportados: o `close_orphans` de cada um fecharia as sessões dos outros.
+- Vários workers do uvicorn, ou iniciar o backend uma segunda vez com um jogo aberto, não são suportados: o `close_orphans` do segundo fecha as sessões abertas do primeiro (ficam cortadas no último batimento).
 - Ainda fora do escopo: ritmo de progresso, jogos abandonados e previsão de horas restantes (dependem do motor de progresso), e jogos de PC/Steam.
 - O scan é uma requisição única e longa; em ISOs muito grandes o navegador pode desistir (o scan continua e grava o resultado).
 - Uma pasta configurada que fica vazia (último jogo apagado ou movido para outra pasta) mantém as linhas antigas, com aviso, porque não dá para distinguir de um disco desmontado. Para limpar, tire a pasta das configurações.
