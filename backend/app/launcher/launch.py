@@ -10,7 +10,7 @@ class LaunchError(Exception):
 def playable_file(paths: list[str]) -> str:
     """A game with a .cue plays from the .cue; otherwise from its first file."""
     if not paths:
-        raise LaunchError("game has no files")
+        raise LaunchError("o jogo não tem arquivos")
     cues = sorted(p for p in paths if p.lower().endswith(".cue"))
     return os.path.abspath(cues[0] if cues else sorted(paths)[0])
 
@@ -23,9 +23,9 @@ def build_argv(executable: str, args: list[str], rom: str) -> list[str]:
 
 def validate_executable(executable: str) -> None:
     if not os.path.isabs(executable):
-        raise LaunchError("emulator path must be absolute")
+        raise LaunchError("o caminho do emulador deve ser absoluto")
     if not (os.path.isfile(executable) and os.access(executable, os.X_OK)):
-        raise LaunchError("emulator path is not an executable file")
+        raise LaunchError("o caminho do emulador não é um arquivo executável")
 
 
 def launch(executable: str, args: list[str], paths: list[str]) -> int:
@@ -33,7 +33,7 @@ def launch(executable: str, args: list[str], paths: list[str]) -> int:
     # Files on an unmounted drive are still in the library but cannot be played.
     present = [p for p in paths if os.path.exists(p)]
     if not present:
-        raise LaunchError("game files are missing; rescan the library")
+        raise LaunchError("os arquivos do jogo não foram encontrados; escaneie a biblioteca de novo")
     argv = build_argv(executable, args, playable_file(present))
     try:
         proc = subprocess.Popen(
@@ -45,6 +45,6 @@ def launch(executable: str, args: list[str], paths: list[str]) -> int:
             start_new_session=True,
         )
     except OSError as exc:
-        raise LaunchError(f"could not start emulator: {exc}") from exc
+        raise LaunchError(f"não foi possível abrir o emulador: {exc}") from exc
     threading.Thread(target=proc.wait, daemon=True).start()  # reap, no zombie
     return proc.pid

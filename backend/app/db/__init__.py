@@ -69,7 +69,9 @@ CREATE TABLE IF NOT EXISTS progress_estimates (
 def connect() -> sqlite3.Connection:
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # FastAPI opens the connection in one worker thread and runs the endpoint in
+    # another; a request uses it from one thread at a time.
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")

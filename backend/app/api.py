@@ -58,7 +58,7 @@ def put_settings(body: Settings, conn: sqlite3.Connection = Conn) -> Settings:
     )
     for d in clean.rom_dirs + clean.dat_dirs:
         if not os.path.isabs(d):
-            raise HTTPException(422, f"Folder path must be absolute: {d}")
+            raise HTTPException(422, f"O caminho da pasta deve ser absoluto: {d}")
     for key, value in clean.model_dump().items():
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) "
@@ -72,12 +72,12 @@ def put_settings(body: Settings, conn: sqlite3.Connection = Conn) -> Settings:
 @router.post("/scan")
 def run_scan(conn: sqlite3.Connection = Conn) -> dict:
     if not _scan_lock.acquire(blocking=False):
-        raise HTTPException(409, "A scan is already running")
+        raise HTTPException(409, "Já existe um scan em andamento")
     try:
         s = _read_settings(conn)
         if not s.rom_dirs:
             # An empty list would delete every game; never do that by accident.
-            raise HTTPException(422, "No ROM folders configured")
+            raise HTTPException(422, "Nenhuma pasta de ROMs configurada")
         return scan(conn, s.rom_dirs, s.dat_dirs)
     finally:
         _scan_lock.release()
@@ -110,9 +110,9 @@ def list_emulators(conn: sqlite3.Connection = Conn) -> list[EmulatorIn]:
 def put_emulator(body: EmulatorIn, conn: sqlite3.Connection = Conn) -> EmulatorIn:
     # Platform must be one the library really has, so it matches the DAT name.
     if body.platform not in list_platforms(conn):
-        raise HTTPException(422, "Unknown platform: pick one found in the library")
+        raise HTTPException(422, "Plataforma desconhecida: escolha uma encontrada na biblioteca")
     if not any("{rom}" in a for a in body.args):
-        raise HTTPException(422, "Arguments must contain {rom}")
+        raise HTTPException(422, "Os argumentos devem conter {rom}")
     try:
         validate_executable(body.executable)
     except LaunchError as exc:
@@ -130,12 +130,12 @@ def put_emulator(body: EmulatorIn, conn: sqlite3.Connection = Conn) -> EmulatorI
 def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     game = conn.execute("SELECT platform FROM games WHERE id = ?", (game_id,)).fetchone()
     if game is None:
-        raise HTTPException(404, "Game not found")
+        raise HTTPException(404, "Jogo não encontrado")
     if game["platform"] is None:
-        raise HTTPException(409, "Game is not identified, so its platform is unknown")
+        raise HTTPException(409, "Jogo não identificado: a plataforma é desconhecida")
     emu = conn.execute("SELECT executable, args FROM emulators WHERE platform = ?", (game["platform"],)).fetchone()
     if emu is None:
-        raise HTTPException(409, f"No emulator configured for {game['platform']}")
+        raise HTTPException(409, f"Nenhum emulador configurado para {game['platform']}")
     paths = [r["path"] for r in conn.execute("SELECT path FROM files WHERE game_id = ?", (game_id,))]
     try:
         return {"pid": launch(emu["executable"], json.loads(emu["args"]), paths)}

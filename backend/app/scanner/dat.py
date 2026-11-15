@@ -37,7 +37,7 @@ def _parse_into(path: str, index: DatIndex) -> None:
             el.clear()
         elif el.tag == "game":
             if not platform:
-                raise ValueError("DAT has no header name")
+                raise ValueError("o DAT não tem nome no cabeçalho")
             title = el.get("name", "").strip()
             for rom in el.findall("rom"):
                 entry = (platform, title)
@@ -53,7 +53,7 @@ def load_dats(dirs: list[str]) -> tuple[DatIndex, list[str]]:
     index, errors = DatIndex(), []
     for root in dirs:
         if not os.path.isdir(root):
-            errors.append(f"DAT folder not found: {os.fsencode(root).decode('utf-8', 'replace')}")
+            errors.append(f"Pasta de DATs não encontrada: {os.fsencode(root).decode('utf-8', 'replace')}")
             continue
         for dirpath, _, names in os.walk(root):
             for name in sorted(names):
@@ -62,5 +62,5 @@ def load_dats(dirs: list[str]) -> tuple[DatIndex, list[str]]:
                     try:
                         parse_dat(full, index)
                     except (ET.ParseError, OSError, ValueError) as exc:
-                        errors.append(f"Bad DAT {os.fsencode(full).decode('utf-8', 'replace')}: {exc}")
+                        errors.append(f"DAT inválido {os.fsencode(full).decode('utf-8', 'replace')}: {exc}")
     return index, errors

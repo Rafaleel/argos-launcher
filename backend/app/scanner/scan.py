@@ -30,7 +30,7 @@ def scan(conn: sqlite3.Connection, rom_dirs: list[str], dat_dirs: list[str]) -> 
     for configured in rom_dirs:
         root = os.path.realpath(configured)
         if not os.path.isdir(root):
-            errors.append(f"ROM folder not found: {printable(root)}")
+            errors.append(f"Pasta de ROMs não encontrada: {printable(root)}")
             protected.append(root)
             continue
         found_here = 0
@@ -38,7 +38,7 @@ def scan(conn: sqlite3.Connection, rom_dirs: list[str], dat_dirs: list[str]) -> 
 
         def on_error(exc: OSError) -> None:
             unreadable.append(exc.filename)
-            errors.append(f"Cannot read folder {printable(str(exc.filename))}: {exc.strerror}")
+            errors.append(f"Não foi possível ler a pasta {printable(str(exc.filename))}: {exc.strerror}")
 
         for dirpath, _, names in os.walk(root, onerror=on_error):
             for name in sorted(names):
@@ -48,7 +48,7 @@ def scan(conn: sqlite3.Connection, rom_dirs: list[str], dat_dirs: list[str]) -> 
                 try:
                     path.encode("utf-8")  # SQLite cannot store undecodable names
                 except UnicodeEncodeError:
-                    errors.append(f"Skipped file with a non-UTF-8 name in {printable(dirpath)}")
+                    errors.append(f"Arquivo ignorado: nome fora de UTF-8 em {printable(dirpath)}")
                     continue
                 found_here += 1  # counts files already seen via an overlapping root too
                 if path in seen:
@@ -60,7 +60,7 @@ def scan(conn: sqlite3.Connection, rom_dirs: list[str], dat_dirs: list[str]) -> 
                         cached += 1
                     seen.add(path)
                 except OSError as exc:
-                    errors.append(f"Cannot read {printable(path)}: {exc.strerror}")
+                    errors.append(f"Não foi possível ler {printable(path)}: {exc.strerror}")
         protected += unreadable
         if found_here:
             healthy.append(root)
@@ -71,7 +71,7 @@ def scan(conn: sqlite3.Connection, rom_dirs: list[str], dat_dirs: list[str]) -> 
     for root in empty:
         if not any(root == h or root.startswith(h + os.sep) for h in healthy):
             protected.append(root)
-            errors.append(f"{printable(root)} is empty now; kept its games. Remove the folder from the settings to clear them.")
+            errors.append(f"{printable(root)} está vazia agora; os jogos dela foram mantidos. Tire a pasta das configurações para limpá-los.")
 
     removed = _remove_vanished(conn, protected, seen)
     games = _regroup(conn, index)
@@ -108,6 +108,9 @@ def _refresh_file(conn: sqlite3.Connection, path: str) -> bool:
     return True
 
 
+# shortcut: a sub-folder unmounted under a healthy configured folder still loses
+# its rows (they are re-hashed when it returns). Phase 2: sessions.game_id has no
+# delete rule, so deleting a played game will fail; mark files missing instead.
 def _remove_vanished(conn: sqlite3.Connection, protected: list[str], seen: set[str]) -> int:
     """Drop rows the scan did not see, except under folders we could not judge
     (missing, unreadable or suspiciously empty). Rows under folders that left
