@@ -152,3 +152,16 @@ def test_busy_heartbeat_does_not_kill_the_monitor(conn, tmp_path, monkeypatch):
     blocker.close()
     wait_monitors()
     assert sessions(conn)[0]["ended_at"] is not None
+
+
+def test_late_heartbeat_does_not_touch_a_closed_session(conn, tmp_path):
+    # Happens when a second backend sweeps the session while the first monitor still runs.
+    g = add_game(conn)
+    exe = script(tmp_path, "import time; time.sleep(2)")
+    start_session(conn, g, lambda: launch(exe, [], [exe]))
+    close_orphans(conn)
+    closed = sessions(conn)[0]
+    time.sleep(1.2)  # several beats pass (BEAT is 0.3 s in tests)
+    after = sessions(conn)[0]
+    assert after["ended_at"] == closed["ended_at"] and after["last_heartbeat"] == closed["last_heartbeat"]
+    wait_monitors()
