@@ -17,13 +17,27 @@ class DatIndex:
 
 
 def parse_dat(path: str, index: DatIndex) -> None:
-    """Add the games of a No-Intro/Redump XML DAT to the index."""
+    """Add the games of a No-Intro/Redump XML DAT to the index.
+
+    All or nothing: a truncated or header-less DAT adds nothing.
+    """
+    found = DatIndex()
+    _parse_into(path, found)
+    for k, v in found.by_sha1.items():
+        index.by_sha1.setdefault(k, v)
+    for k, v in found.by_crc.items():
+        index.by_crc.setdefault(k, v)
+
+
+def _parse_into(path: str, index: DatIndex) -> None:
     platform = ""
     for _, el in ET.iterparse(path):
         if el.tag == "header":
             platform = (el.findtext("name") or "").strip()
             el.clear()
         elif el.tag == "game":
+            if not platform:
+                raise ValueError("DAT has no header name")
             title = el.get("name", "").strip()
             for rom in el.findall("rom"):
                 entry = (platform, title)
@@ -47,6 +61,6 @@ def load_dats(dirs: list[str]) -> tuple[DatIndex, list[str]]:
                     full = os.path.join(dirpath, name)
                     try:
                         parse_dat(full, index)
-                    except (ET.ParseError, OSError) as exc:
+                    except (ET.ParseError, OSError, ValueError) as exc:
                         errors.append(f"Bad DAT {full}: {exc}")
     return index, errors

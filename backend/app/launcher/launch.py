@@ -1,5 +1,6 @@
 import os
 import subprocess
+import threading
 
 
 class LaunchError(Exception):
@@ -29,7 +30,11 @@ def validate_executable(executable: str) -> None:
 
 def launch(executable: str, args: list[str], paths: list[str]) -> int:
     validate_executable(executable)
-    argv = build_argv(executable, args, playable_file(paths))
+    # Files on an unmounted drive are still in the library but cannot be played.
+    present = [p for p in paths if os.path.exists(p)]
+    if not present:
+        raise LaunchError("game files are missing; rescan the library")
+    argv = build_argv(executable, args, playable_file(present))
     try:
         proc = subprocess.Popen(
             argv,
@@ -41,4 +46,5 @@ def launch(executable: str, args: list[str], paths: list[str]) -> int:
         )
     except OSError as exc:
         raise LaunchError(f"could not start emulator: {exc}") from exc
+    threading.Thread(target=proc.wait, daemon=True).start()  # reap, no zombie
     return proc.pid

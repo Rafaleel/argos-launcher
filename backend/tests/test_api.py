@@ -64,3 +64,39 @@ def test_unknown_game_is_404(client):
 def test_foreign_host_header_is_rejected(tmp_path):
     evil = TestClient(app, base_url="http://evil.example")
     assert evil.get("/api/games").status_code == 400
+
+
+def test_cross_site_post_is_rejected_but_local_ui_origin_passes(client):
+    evil = {"Origin": "https://evil.example", "Content-Type": "text/plain"}
+    assert client.post("/api/scan", headers=evil).status_code == 403
+    assert client.post("/api/scan", headers={"Origin": "http://127.0.0.1:5173"}).status_code == 200
+
+
+def test_relative_folder_is_refused(client):
+    r = client.put("/api/settings", json={"rom_dirs": ["roms"], "dat_dirs": []})
+    assert r.status_code == 422
+
+
+def test_settings_can_be_saved_while_a_scan_is_hashing(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from app.db import connect
+    from app.scanner import scan as scan_mod
+
+    roms = tmp_path / "roms"
+    roms.mkdir()
+    for i in range(4):
+        (roms / f"{i}.gba").write_bytes(bytes([i]))
+    real = scan_mod.hash_file
+    monkeypatch.setattr(scan_mod, "hash_file", lambda p: (time.sleep(0.3), real(p))[1])
+    worker = threading.Thread(target=lambda: scan_mod.scan(connect(), [str(roms)], []))
+    worker.start()
+    time.sleep(0.5)  # mid-scan, after the first file was written
+    other = connect()
+    started = time.monotonic()
+    other.execute("INSERT INTO settings (key, value) VALUES ('x', '1')")
+    other.commit()
+    waited = time.monotonic() - started
+    worker.join()
+    assert waited < 0.2  # a scan that held its write lock would make this wait for the whole scan
