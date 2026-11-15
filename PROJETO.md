@@ -1,0 +1,142 @@
+# Argos Launcher: gerenciador local de jogos com estimativa de progresso por IA
+
+> Documento de contexto para o Claude Code. Descreve o que é o projeto, as decisões já tomadas e a ordem de construção. Nome do projeto: Argos Launcher (pacote `argos`).
+
+## 1. Visão geral
+
+Aplicativo desktop **local e offline** para gerenciar uma biblioteca de jogos (ROMs de emulador, ISOs e jogos de PC instalados). O usuário consegue:
+
+- escanear pastas e ter os jogos identificados e organizados automaticamente;
+- clicar em **play** e abrir o jogo no emulador/executável correto;
+- ver estatísticas de uso (tempo por jogo, plataforma, período, ritmo);
+- ver **quanto do jogo já foi jogado (%)**, com um intervalo de confiança.
+
+Gerenciadores assim já existem (Playnite, LaunchBox, ES-DE). O **diferencial deste projeto** é o motor de progresso: uma estimativa de % concluído obtida por **fusão de sinais** de várias fontes, com a incerteza explícita. É um projeto de aprendizado/portfólio com foco em engenharia de IA.
+
+## 2. O problema central: "% do jogo"
+
+- A ROM/ISO **não contém** informação de progresso; é conteúdo estático. Ela serve apenas para **identificar** o jogo (hash, serial).
+- O progresso real está na **memória RAM** durante a execução e no **arquivo de save**.
+- "% concluído" não é bem definido de forma universal. Cada jogo precisa de uma definição (padrão: **história principal**, modelada como uma lista ordenada de marcos).
+
+### Fontes de sinal (da mais confiável para a menos)
+
+| # | Sinal | Confiabilidade | Observação |
+|---|---|---|---|
+| 1 | Leitura de RAM do emulador | Muito alta | Exige mapa de memória por jogo (fontes: code notes do RetroAchievements, autosplitters do LiveSplit, decompilações) |
+| 2 | Parse do arquivo de save | Muito alta | Formato varia por jogo |
+| 3 | Conquistas (RetroAchievements, Steam) | Alta, parcial | Indica "pelo menos até aqui" |
+| 4 | Screenshot classificado por modelo de visão | Média | Modelo pode errar a fase |
+| 5 | Tempo jogado ÷ tempo médio para zerar | Baixa | Só empurra a estimativa. Fonte do tempo médio: IGDB (`game_time_to_beats`, dados da comunidade; confirmar campos na documentação) ou digitado à mão na primeira versão. HowLongToBeat não tem API pública oficial: não depender dele |
+
+### Fusão de sinais (o núcleo de IA)
+
+O progresso é uma **variável latente** estimada por um filtro bayesiano discreto exato (HMM) sobre os marcos do jogo. Com algumas dezenas de marcos em ordem, não precisa de filtro de partículas:
+
+- **Estado:** distribuição de probabilidade sobre os marcos (não um número único).
+- **Predição:** a cada intervalo de tempo jogado, a crença avança um pouco e fica mais incerta.
+- **Correção:** cada sinal recebido atualiza a crença, com peso proporcional à sua confiabilidade (modelo de observação por tipo de sinal).
+- **Monotonicidade:** o progresso quase nunca regride. Exceções (new game+, save antigo carregado) são tratadas como evento de reset.
+- **Saída:** estimativa + intervalo de confiança (ex.: `62% ± 1` com RAM; `~40% ± 20` só com tempo).
+- **Marcos:** a lista de marcos de cada jogo é escrita à mão (poucos jogos de referência no início), a partir de fontes como guias e conquistas. Cada sinal precisa de uma ligação explícita com os marcos (ex.: conquista X implica "pelo menos o marco 7"). "Conquistas ganhas ÷ total" não é progresso da história sem essa ligação.
+- **Calibração:** em jogos com RAM/save como verdade, medir o erro dos outros sinais e ajustar os pesos; reutilizar esses pesos em jogos sem mapa. Ter métrica de erro e avaliação. Limite conhecido: com 1 ou 2 jogos mapeados e um único jogador, os pesos são só um ponto de partida e não generalizam; os intervalos de confiança devem refletir isso.
+
+O sistema usa os sinais **que estiverem disponíveis** para cada jogo; nenhum é obrigatório.
+
+## 3. Stack
+
+| Camada | Tecnologia |
+|---|---|
+| Sistema operacional alvo | Linux |
+| Interface | Tauri + React + TypeScript |
+| Backend | Python + FastAPI (processo local) |
+| Banco | SQLite (sqlite-vec para embeddings, fase final) |
+| Modelos locais | Ollama (LLM e visão) |
+| Fusão de sinais | numpy puro (implementar o filtro à mão) |
+
+**Decisão:** começar como aplicação web local (FastAPI + React no navegador). Empacotar com Tauri só depois que as fases 1 e 2 estiverem funcionando.
+
+## 4. Arquitetura
+
+```
+frontend (React)  ──HTTP──>  backend (FastAPI)
+                               ├── scanner      identifica arquivos por hash
+                               ├── launcher     abre emulador/executável e monitora o processo
+                               ├── sessions     registra início, fim e duração
+                               ├── collectors   geram sinais durante a sessão
+                               ├── progress     filtro de fusão -> estimativa
+                               ├── stats        agregações para a interface
+                               └── db           SQLite
+```
+
+### Módulos
+
+1. **Scanner e identificação.** Varre pastas configuradas, calcula hash (CRC32/SHA-1) de cada arquivo e compara com arquivos DAT do No-Intro e Redump para identificar o jogo exato. Busca capa e metadados (IGDB ou ScreenScraper). Jogos de PC são adicionados apontando para o executável.
+   - **Cabeçalhos:** os DATs do No-Intro para NES hasheiam a ROM sem o cabeçalho de 16 bytes; o scanner tira o cabeçalho antes do hash nesses sistemas. Outros sistemas com cabeçalho (SNES, Lynx, A7800) precisam ser conferidos um a um.
+   - **Formatos:** o Redump hasheia as faixas cruas (bin/cue, iso). CHD, RVZ e zip não batem com o hash do DAT. Na fase 1, aceitar só imagens cruas e mostrar "não identificado" para o resto, dizendo o motivo.
+   - **Cache:** guardar o hash por caminho, tamanho e data de modificação; só recalcular quando algum deles mudar (ISOs de vários GB).
+2. **Launcher.** Cada plataforma tem um perfil de emulador com template de comando guardado como **lista de argumentos** (ex.: `["pcsx2", "{rom}", "--fullscreen"]`). O processo é aberto sem shell, para que um nome de arquivo com `"` ou `$(...)` não execute comandos.
+3. **Sessões.** A sessão começa ao abrir o jogo e termina quando o **processo do emulador** sai. O processo lançado pode ser só um wrapper (Flatpak, Steam, script) que sai na hora, então o monitor segue o emulador (por nome ou processo filho) e não o PID inicial. Durante a sessão, gravar um batimento periódico. Ao iniciar o app, fechar sessões abertas com o último batimento (cobre queda do app).
+4. **Coletores.** Rodam durante a sessão e gravam eventos na tabela `signals`. Interface comum (`Collector`) para que novos sinais sejam plugáveis.
+5. **Motor de progresso.** Consome `signals` e grava `progress_estimates`.
+6. **Estatísticas.** Tempo por jogo/plataforma/semana, ritmo de progresso, jogos abandonados, previsão de horas restantes.
+
+### Modelo de dados (SQLite)
+
+- `games` — id, título, plataforma, metadados, capa
+- `files` — id, game_id, caminho, tamanho, crc32, sha1
+- `emulators` — id, plataforma, caminho do executável, template de comando
+- `sessions` — id, game_id, início, fim, último batimento (a duração é calculada como fim − início na consulta, não guardada)
+- `milestones` — id, game_id, ordem, nome (marcos da história principal, escritos à mão)
+- `signals` — id, game_id, session_id (**pode ser nulo**: conquistas e saves podem chegar fora de uma sessão), tipo, payload (JSON), timestamp
+- `progress_estimates` — id, game_id, timestamp, média, limite inferior, limite superior
+
+**Regra:** os sinais brutos são sempre guardados. Se o filtro mudar, o histórico inteiro pode ser reprocessado.
+
+## 5. Ordem de construção
+
+| Fase | Entrega | Critério de pronto |
+|---|---|---|
+| 1 | Scanner + biblioteca + launcher | Escaneia uma pasta, lista os jogos identificados e abre um jogo no emulador |
+| 2 | Sessões + estatísticas de tempo | Tempo jogado registrado e exibido por jogo e por período |
+| 3 | Progresso com um sinal (conquistas do RetroAchievements) | % exibido para jogos com conquistas |
+| 4 | Leitura de RAM para 1–2 jogos | Marcos detectados em tempo real. Método: interface de rede (UDP, `READ_CORE_MEMORY`) do RetroArch como referência, por ser documentada e não exigir permissão especial. Segunda opção: PINE do DuckStation (confirmar o socket no Linux). Evitar `/proc/pid/mem` como caminho principal: exige `ptrace_scope=0`, `CAP_SYS_PTRACE` ou root |
+| 5 | Fusão de sinais + calibração | Estimativa com intervalo de confiança; erro medido contra RAM |
+| 6 | Visão, RAG por jogo e recomendação | Fora do escopo inicial |
+
+**Começar pela fase 1.** Não implementar fases posteriores antes de a anterior estar funcionando, mas desde o início manter `signals` e a interface `Collector` no desenho.
+
+## 6. Estrutura de pastas sugerida
+
+```
+argos/
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── db/            schema e acesso ao SQLite
+│   │   ├── scanner/
+│   │   ├── launcher/
+│   │   ├── sessions/
+│   │   ├── collectors/
+│   │   ├── progress/
+│   │   └── stats/
+│   ├── tests/
+│   └── pyproject.toml
+├── frontend/              React + TypeScript (Vite)
+└── PROJETO.md
+```
+
+## 7. Diretrizes
+
+- Tudo roda localmente; nenhuma dependência de serviço em nuvem obrigatória. APIs externas (metadados, conquistas) são opcionais e com cache.
+- O app **não distribui nem baixa** ROMs/ISOs; só gerencia arquivos que o usuário já tem.
+- Testes para o scanner (hash e matching) e para o filtro de fusão (com sinais sintéticos).
+- Código e commits em inglês; interface em português.
+
+## 8. Em aberto
+
+- ~~Nome do projeto~~: decidido, Argos Launcher.
+- ~~Sistema operacional alvo~~ — decidido: Linux.
+- Quais emuladores e plataformas suportar primeiro (sugestão: RetroArch, pela fase 4).
+- Quais jogos usar como referência na fase 4 (precisam ter mapa de RAM disponível).
+- A confirmar: campos do `game_time_to_beats` no IGDB; socket do PINE (PCSX2 e DuckStation) no Linux; cabeçalhos nos DATs de SNES, Lynx e A7800.
