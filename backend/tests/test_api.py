@@ -69,7 +69,7 @@ def test_foreign_host_header_is_rejected(tmp_path):
 def test_cross_site_post_is_rejected_but_local_ui_origin_passes(client):
     evil = {"Origin": "https://evil.example", "Content-Type": "text/plain"}
     assert client.post("/api/scan", headers=evil).status_code == 403
-    assert client.post("/api/scan", headers={"Origin": "http://127.0.0.1:5173"}).status_code == 200
+    assert client.post("/api/scan", headers={"Origin": "http://127.0.0.1:5173"}).status_code != 403
 
 
 def test_relative_folder_is_refused(client):
@@ -100,3 +100,10 @@ def test_settings_can_be_saved_while_a_scan_is_hashing(tmp_path, monkeypatch):
     waited = time.monotonic() - started
     worker.join()
     assert waited < 0.2  # a scan that held its write lock would make this wait for the whole scan
+
+
+def test_scan_with_no_folders_is_refused_and_keeps_games(client, tmp_path):
+    prepare(client, tmp_path)
+    client.put("/api/settings", json={"rom_dirs": [], "dat_dirs": []})
+    assert client.post("/api/scan").status_code == 422
+    assert len(client.get("/api/games").json()) == 2

@@ -14,36 +14,44 @@ EXTENSIONS = {
 }
 
 
+def printable(path: str) -> str:
+    """Make a path safe to put in a JSON message (names may hold undecodable bytes)."""
+    return os.fsencode(path).decode("utf-8", "replace")
+
+
 def scan(conn: sqlite3.Connection, rom_dirs: list[str], dat_dirs: list[str]) -> dict:
     index, errors = load_dats(dat_dirs)
     seen: set[str] = set()
     protected: list[str] = []  # folders whose missing files must NOT be deleted
+    healthy: list[str] = []
+    empty: list[str] = []
     hashed = cached = 0
 
     for configured in rom_dirs:
         root = os.path.realpath(configured)
         if not os.path.isdir(root):
-            errors.append(f"ROM folder not found: {root}")
+            errors.append(f"ROM folder not found: {printable(root)}")
             protected.append(root)
             continue
-        before = len(seen)
+        found_here = 0
         unreadable: list[str] = []
 
         def on_error(exc: OSError) -> None:
             unreadable.append(exc.filename)
-            errors.append(f"Cannot read folder {exc.filename}: {exc.strerror}")
+            errors.append(f"Cannot read folder {printable(str(exc.filename))}: {exc.strerror}")
 
         for dirpath, _, names in os.walk(root, onerror=on_error):
             for name in sorted(names):
                 if os.path.splitext(name)[1].lower() not in EXTENSIONS:
                     continue
                 path = os.path.join(dirpath, name)
-                if path in seen:
-                    continue
                 try:
                     path.encode("utf-8")  # SQLite cannot store undecodable names
                 except UnicodeEncodeError:
-                    errors.append(f"Skipped file with a non-UTF-8 name in {dirpath}")
+                    errors.append(f"Skipped file with a non-UTF-8 name in {printable(dirpath)}")
+                    continue
+                found_here += 1  # counts files already seen via an overlapping root too
+                if path in seen:
                     continue
                 try:
                     if _refresh_file(conn, path):
@@ -52,12 +60,18 @@ def scan(conn: sqlite3.Connection, rom_dirs: list[str], dat_dirs: list[str]) -> 
                         cached += 1
                     seen.add(path)
                 except OSError as exc:
-                    errors.append(f"Cannot read {path}: {exc}")
+                    errors.append(f"Cannot read {printable(path)}: {exc.strerror}")
         protected += unreadable
-        # An existing but empty folder is most likely an unmounted drive.
-        if len(seen) == before and _has_files_under(conn, root):
+        if found_here:
+            healthy.append(root)
+        elif _has_files_under(conn, root):
+            empty.append(root)
+    # An existing but empty folder is most likely an unmounted drive, unless a
+    # healthy folder that contains it already vouches for its files.
+    for root in empty:
+        if not any(root == h or root.startswith(h + os.sep) for h in healthy):
             protected.append(root)
-            errors.append(f"{root} is empty now; kept its games. Remove the folder from the settings to clear them.")
+            errors.append(f"{printable(root)} is empty now; kept its games. Remove the folder from the settings to clear them.")
 
     removed = _remove_vanished(conn, protected, seen)
     games = _regroup(conn, index)
@@ -118,7 +132,7 @@ def _cue_tracks(cue_path: str) -> list[str]:
     except OSError:
         return []
     base = os.path.dirname(cue_path)
-    return [os.path.join(base, m.group(1) or m.group(2)) for m in CUE_FILE.finditer(text)]
+    return [os.path.normpath(os.path.join(base, m.group(1) or m.group(2))) for m in CUE_FILE.finditer(text)]
 
 
 def _regroup(conn: sqlite3.Connection, index: DatIndex) -> int:

@@ -195,3 +195,36 @@ def test_cue_and_tracks_form_one_game_played_from_cue(conn, tmp_path):
     assert g["title"] == "Game (USA)"
     paths = [r["path"] for r in conn.execute("SELECT path FROM files")]
     assert len(paths) == 3 and playable_file(paths).endswith("g.cue")
+
+
+def test_non_utf8_folder_names_give_json_safe_messages(conn, tmp_path):
+    import json
+
+    bad = os.path.join(os.fsencode(str(tmp_path)), b"dir\xfe")
+    os.mkdir(bad)
+    open(os.path.join(bad, b"x.gba"), "wb").write(b"x")
+    open(os.path.join(bad, b"bad.dat"), "wb").write(b"not xml")
+    result = scan(conn, [str(tmp_path)], [str(tmp_path)])
+    json.dumps(result).encode("utf-8")  # raised before: surrogates not allowed
+    assert result["errors"]
+
+
+def test_overlapping_roots_still_remove_deleted_files(conn, tmp_path):
+    roms, dats = setup_nes(tmp_path)
+    sub = tmp_path / "roms" / "sub"
+    sub.mkdir()
+    (sub / "s1.gba").write_bytes(b"s")
+    (tmp_path / "roms" / "keep.gba").write_bytes(b"k")
+    scan(conn, [roms, str(sub)], [dats])
+    os.remove(sub / "s1.gba")
+    result = scan(conn, [roms, str(sub)], [dats])
+    assert result["files_removed"] == 1 and result["errors"] == []
+
+
+def test_cue_with_dotdot_path_still_joins_track(conn, tmp_path):
+    roms = tmp_path / "roms"
+    (roms / "disc").mkdir(parents=True)
+    (roms / "disc" / "t.bin").write_bytes(b"t")
+    (roms / "g.cue").write_bytes(b'FILE "disc/../disc/t.bin" BINARY\n')
+    scan(conn, [str(roms)], [])
+    assert len(games(conn)) == 1

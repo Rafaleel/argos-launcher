@@ -75,6 +75,9 @@ def run_scan(conn: sqlite3.Connection = Conn) -> dict:
         raise HTTPException(409, "A scan is already running")
     try:
         s = _read_settings(conn)
+        if not s.rom_dirs:
+            # An empty list would delete every game; never do that by accident.
+            raise HTTPException(422, "No ROM folders configured")
         return scan(conn, s.rom_dirs, s.dat_dirs)
     finally:
         _scan_lock.release()
