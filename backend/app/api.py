@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -52,9 +53,12 @@ def get_settings(conn: sqlite3.Connection = Conn) -> Settings:
 @router.put("/settings")
 def put_settings(body: Settings, conn: sqlite3.Connection = Conn) -> Settings:
     clean = Settings(
-        rom_dirs=[d.strip() for d in body.rom_dirs if d.strip()],
-        dat_dirs=[d.strip() for d in body.dat_dirs if d.strip()],
+        rom_dirs=[os.path.expanduser(d.strip()) for d in body.rom_dirs if d.strip()],
+        dat_dirs=[os.path.expanduser(d.strip()) for d in body.dat_dirs if d.strip()],
     )
+    for d in clean.rom_dirs + clean.dat_dirs:
+        if not os.path.isabs(d):
+            raise HTTPException(422, f"Folder path must be absolute: {d}")
     for key, value in clean.model_dump().items():
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) "

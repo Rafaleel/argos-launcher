@@ -54,3 +54,13 @@ def test_bad_executable_is_refused(tmp_path):
         launch("emu", ["{rom}"], ["/r/a.nes"])
     with pytest.raises(LaunchError):
         launch(str(tmp_path / "missing"), ["{rom}"], ["/r/a.nes"])
+
+
+def test_missing_files_are_not_launched_and_present_ones_are(tmp_path):
+    out = tmp_path / "argv.json"
+    real = tmp_path / "b.nes"
+    real.write_bytes(b"rom")
+    launch(fake_emulator(tmp_path), [str(out), "{rom}"], [str(tmp_path / "a-gone.nes"), str(real)])
+    assert wait_for(out) == [str(real)]
+    with pytest.raises(LaunchError):
+        launch(fake_emulator(tmp_path), [str(out), "{rom}"], [str(tmp_path / "gone.nes")])
