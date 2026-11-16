@@ -83,9 +83,9 @@ export default function App() {
       <section>
         <h2>Biblioteca</h2>
         <label>Pastas de ROMs (uma por linha)</label>
-        <textarea rows={3} value={romDirs} onChange={(e) => setRomDirs(e.target.value)} />
+        <textarea aria-label="Pastas de ROMs" rows={3} value={romDirs} onChange={(e) => setRomDirs(e.target.value)} />
         <label>Pastas de DATs No-Intro/Redump (uma por linha)</label>
-        <textarea rows={2} value={datDirs} onChange={(e) => setDatDirs(e.target.value)} />
+        <textarea aria-label="Pastas de DATs" rows={2} value={datDirs} onChange={(e) => setDatDirs(e.target.value)} />
         <p><button onClick={scan} disabled={scanning || !loaded}>{scanning ? "Escaneando…" : "Salvar e escanear"}</button></p>
         <p className="muted">Só imagens cruas (bin/cue, iso, ROMs soltas) são identificadas. Arquivos zip, CHD e RVZ aparecem como não identificados.</p>
       </section>
@@ -123,7 +123,7 @@ export default function App() {
             <h3>Por jogo</h3>
             <Bars rows={gameTime.slice(0, 10).map((g) => ({ id: String(g.game_id), label: g.title, seconds: g.seconds }))} />
             <h3>Por período
-              <select value={by} onChange={(e) => setBy(e.target.value as By)} style={{ width: "auto", marginLeft: 8 }}>
+              <select aria-label="Agrupar por" value={by} onChange={(e) => setBy(e.target.value as By)} style={{ width: "auto", marginLeft: 8 }}>
                 <option value="day">Dia</option><option value="week">Semana</option><option value="month">Mês</option>
               </select>
             </h3>
@@ -151,9 +151,9 @@ function EmulatorRow({ platform, current, onSave }: { platform: string; current?
     <div>
       <h3>{platform}</h3>
       <label>Caminho do executável (absoluto)</label>
-      <input value={exe} onChange={(e) => setExe(e.target.value)} placeholder="/usr/bin/retroarch" />
+      <input aria-label={`Executável do emulador de ${platform}`} value={exe} onChange={(e) => setExe(e.target.value)} placeholder="/usr/bin/retroarch" />
       <label>Argumentos (um por linha; {"{rom}"} vira o caminho do jogo)</label>
-      <textarea rows={3} value={args} onChange={(e) => setArgs(e.target.value)} />
+      <textarea aria-label={`Argumentos do emulador de ${platform}`} rows={3} value={args} onChange={(e) => setArgs(e.target.value)} />
       <p><button onClick={() => onSave({ platform, executable: exe.trim(), args: lines(args).filter(Boolean) })}>Salvar</button></p>
     </div>
   );
