@@ -222,3 +222,38 @@ def test_background_install_reports_progress_and_blocks_a_second_one(tmp_path):
     for t in list(dolphin.MONITORS):
         t.join(timeout=30)
     assert dolphin.JOB["state"] == "error" and "não é deste jogo" in dolphin.JOB["message"]
+
+
+LSPCI = (
+    '00:02.0 "VGA compatible controller" "Intel Corporation" "Raptor Lake-P [UHD Graphics]" -r04 -p00 "Acer Incorporated [ALI]" "Device 171e"\n'
+    '00:1f.3 "Audio device" "Intel Corporation" "Raptor Lake-P/U/H cAVS" -r01 -p80 "Acer Incorporated [ALI]" "Device 171e"\n'
+    '01:00.0 "VGA compatible controller" "NVIDIA Corporation" "AD107M [GeForce RTX 4060 Max-Q / Mobile]" -ra1 -p00 "Acer Incorporated [ALI]" "Device 171e"\n'
+)
+
+
+def test_gpu_names_use_the_chip_vendor_not_the_board_vendor(monkeypatch):
+    monkeypatch.setattr(dolphin.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": LSPCI})())
+    assert dolphin.gpu_names() == [
+        "Intel Corporation Raptor Lake-P [UHD Graphics]",
+        "NVIDIA Corporation AD107M [GeForce RTX 4060 Max-Q / Mobile]",
+    ]
+
+
+def test_gpu_names_survive_a_missing_lspci(monkeypatch):
+    def boom(*a, **k):
+        raise FileNotFoundError("lspci")
+
+    monkeypatch.setattr(dolphin.subprocess, "run", boom)
+    assert dolphin.gpu_names() == []
+
+
+def test_controller_candidates_only_list_devices_with_a_js_handler(tmp_path, monkeypatch):
+    text = (
+        'I: Bus=0003 Vendor=045e Product=0b13\nN: Name="Xbox Wireless Controller"\nH: Handlers=event12 js0\n\n'
+        'I: Bus=0011\nN: Name="AT Translated Set 2 keyboard"\nH: Handlers=sysrq kbd event3\n\n'
+    )
+    fake = tmp_path / "devices"
+    fake.write_text(text)
+    real = Path
+    monkeypatch.setattr(dolphin, "Path", lambda p: fake if p == "/proc/bus/input/devices" else real(p))
+    assert dolphin.controller_candidates() == [{"name": "Xbox Wireless Controller", "device": "SDL/0/Xbox Wireless Controller"}]

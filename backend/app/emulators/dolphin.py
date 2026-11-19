@@ -172,8 +172,8 @@ def gpu_names() -> list[str]:
     for line in out.splitlines():
         if re.search(r'"(VGA compatible controller|3D controller|Display controller)"', line):
             parts = re.findall(r'"([^"]*)"', line)
-            if len(parts) >= 4:
-                names.append(f"{parts[2]} {parts[3]}")
+            if len(parts) >= 3:  # class, vendor, device; the rest is the board's subsystem
+                names.append(f"{parts[1]} {parts[2]}")
     return names
 
 

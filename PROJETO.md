@@ -107,6 +107,21 @@ frontend (React)  ──HTTP──>  backend (FastAPI)
 - Uma pasta configurada que fica vazia (último jogo apagado ou movido para outra pasta) mantém as linhas antigas, com aviso, porque não dá para distinguir de um disco desmontado. Para limpar, tire a pasta das configurações.
 - Lista de pastas de ROMs vazia é recusada: a biblioteca não pode ser zerada pela interface.
 
+## Perfis do Dolphin (fora das fases numeradas)
+
+O Argos configura o Dolphin sem abrir a interface dele. Vale só para emuladores cadastrados que apontam para o Dolphin (`flatpak run org.DolphinEmu.dolphin-emu` ou um executável `dolphin-emu`).
+
+- **Vídeo:** backend (Vulkan/OpenGL), placa de vídeo (padrão do sistema ou NVIDIA), resolução interna, anisotropia, VSync, texturas HD e pré-carregamento. Há um padrão para todos os jogos e um ajuste por jogo; o do jogo vence. "Padrão" não mexe no valor que o Dolphin já tem.
+- **Como é aplicado** (verificado no Dolphin 2609b): as opções `-C GFX.*` da linha de comando são **ignoradas**, então o Argos grava `GameSettings/<ID>.ini` antes de abrir o jogo (`-v` escolhe o backend). A placa NVIDIA vem de variáveis de PRIME, passadas como `--env=` do Flatpak (antes do id do app) ou no ambiente do processo. Provado pelo `nvidia-smi` e pelo log do Dolphin, em OpenGL e em Vulkan.
+- **Pacotes de texturas:** o Argos valida a lista do arquivo (toda entrada precisa estar na pasta `<ID>/` ou `<3 letras>/` do jogo; recusa `..`, caminhos absolutos e links simbólicos), confere espaço em disco, extrai numa pasta temporária e troca. Usa o `7z`, pois o `unzip` não abre a compressão dos pacotes SHDP. O ID vem dos 6 primeiros bytes da ISO.
+- **Controles (jogador 1):** teclado e mouse (padrão do Dolphin), teclado WASD e controle de Xbox (perfil "SDL Gamepad" que acompanha o Dolphin). O `GCPadNew.ini` anterior fica em `GCPadNew.ini.argos-bak` (a primeira cópia nunca é sobrescrita).
+- **Limites:**
+  - O mapeamento do mouse (C-Stick pelo mouse) não existe: não consegui verificar os nomes de entrada do mouse no Dolphin.
+  - O nome do controle de Xbox vem do kernel e pode diferir do nome SDL que o Dolphin usa; se o controle não responder, use o nome exato mostrado nos Controles do Dolphin. Não testei com um controle de verdade.
+  - Resolução, anisotropia e VSync seguem os nomes das chaves do Dolphin, mas só as texturas e a placa foram provadas no seu Dolphin.
+  - Mudar controles ou texturas exige o Dolphin fechado.
+  - Só o Dolphin tem adaptador; a estrutura permite acrescentar o RetroArch depois.
+
 ## 5. Ordem de construção
 
 | Fase | Entrega | Critério de pronto |
