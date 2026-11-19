@@ -120,6 +120,10 @@ O Argos configura o Dolphin sem abrir a interface dele. Vale só para emuladores
   - O nome do controle de Xbox vem do kernel e pode diferir do nome SDL que o Dolphin usa; se o controle não responder, use o nome exato mostrado nos Controles do Dolphin. Não testei com um controle de verdade.
   - Resolução, anisotropia e VSync seguem os nomes das chaves do Dolphin, mas só as texturas e a placa foram provadas no seu Dolphin.
   - Mudar controles ou texturas exige o Dolphin fechado.
+  - "Padrão" desfaz só o que o Argos gravou (ele lembra as chaves por jogo, a partir do primeiro jogo aberto com esta versão); chaves que você mesmo pôs no `.ini` do jogo não são apagadas.
+  - Sem ID do jogo (RVZ, WBFS, GCZ e CISO não trazem o ID no começo do arquivo), resolução, anisotropia, VSync e texturas não são aplicados; backend e placa de vídeo continuam valendo. A tela avisa.
+  - Escolher a placa de vídeo com Flatpak exige cadastrar o emulador como `flatpak` com `run <id>`; o script exportado (`.../exports/bin/org.DolphinEmu.dolphin-emu`) não repassa o ambiente, e o Argos recusa a combinação com uma mensagem.
+  - A lista de placas vem do `lspci` (lido uma vez e guardado: pode levar uns 2 s e acordar a placa dedicada na primeira consulta).
   - Só o Dolphin tem adaptador; a estrutura permite acrescentar o RetroArch depois.
 
 ## 5. Ordem de construção

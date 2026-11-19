@@ -1,6 +1,10 @@
 import os
 import pytest
 
+from app.emulators import dolphin as _dolphin
+
+REAL_IS_RUNNING = _dolphin.is_running  # the autouse fixture below replaces it in every test
+
 from app.db import connect
 
 
@@ -46,3 +50,18 @@ def fast_monitors(monkeypatch):
         t.join(timeout=10)
     assert not any(t.is_alive() for t in tracker.MONITORS), "a session monitor is still running"
     tracker.MONITORS.clear()
+
+
+@pytest.fixture(autouse=True)
+def clean_dolphin_state(monkeypatch):
+    """Dolphin helpers keep module state; tests must not depend on the machine's Dolphin."""
+    from app.emulators import dolphin
+
+    dolphin.gpu_names.cache_clear()
+    dolphin.nvidia_flatpak_ready.cache_clear()
+    dolphin.JOB.update(state="idle", message="", game_id=None)
+    monkeypatch.setattr(dolphin, "is_running", lambda proc="/proc": False)  # a real Dolphin may be open
+    yield
+    for t in dolphin.MONITORS:
+        t.join(timeout=30)
+    dolphin.MONITORS.clear()

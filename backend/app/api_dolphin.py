@@ -60,7 +60,7 @@ def info(conn: sqlite3.Connection = Conn) -> dict:
         "detected": install is not None,
         "flatpak": install.flatpak if install else None,
         "running": dolphin.is_running(),
-        "gpus": dolphin.gpu_names(),
+        "gpus": list(dolphin.gpu_names()),
         "nvidia_ready": dolphin.nvidia_flatpak_ready() if install and install.flatpak else None,
         "controllers": dolphin.controller_candidates(),
         "seven_zip": dolphin.seven_zip() is not None,
@@ -125,6 +125,8 @@ def remove_textures(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     if code is None:
         raise HTTPException(409, "Não consegui ler o ID do jogo; escaneie de novo")
     _not_running()
+    if dolphin.install_running():
+        raise HTTPException(409, "Há uma instalação de pacote em andamento")
     return {"removed": dolphin.remove_pack(install, code)}
 
 
