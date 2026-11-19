@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, By, Emulator, Game, GameTime, Period, PlatformTime, ScanResult, formatDuration } from "./api";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { api, By, DolphinInfo, Emulator, Game, GameTime, Period, PlatformTime, ScanResult, formatDuration } from "./api";
+import { DolphinPanel, GameSettings } from "./Dolphin";
 
 const lines = (s: string) => s.split("\n");
 
@@ -15,15 +16,19 @@ export default function App() {
   const [gameTime, setGameTime] = useState<GameTime[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
   const [by, setBy] = useState<By>("day");
+  const [info, setInfo] = useState<DolphinInfo | null>(null);
+  const [openGame, setOpenGame] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false); // never save a textarea that did not load
 
   const show = (text: string, error = false) => setMsg({ text, error });
   const fail = (e: unknown) => show(e instanceof Error ? e.message : String(e), true);
 
   const refresh = useCallback(async () => {
-    const [g, p, e, pt, gt, per] = await Promise.all([
+    const [g, p, e, pt, gt, per, di] = await Promise.all([
       api.games(), api.platforms(), api.emulators(), api.statsPlatforms(), api.statsGames(), api.statsPeriods(by),
+      api.dolphinInfo(),
     ]);
+    setInfo(di);
     setGames(g);
     setPlatforms(p);
     setEmulators(e);
@@ -97,17 +102,27 @@ export default function App() {
             <thead><tr><th>Título</th><th>Plataforma</th><th>Tempo jogado</th><th /></tr></thead>
             <tbody>
               {games.map((g) => (
-                <tr key={g.id}>
-                  <td>{g.title}{g.playing && <span className="badge">jogando agora</span>}</td>
-                  <td>{g.platform ?? <span className="muted">não identificado</span>}</td>
-                  <td>{formatDuration(g.seconds_played)}</td>
-                  <td>
-                    <button disabled={!g.identified || !g.has_emulator || g.playing} onClick={() => play(g)}
-                      title={!g.identified ? "Jogo não identificado" : !g.has_emulator ? "Configure um emulador" : g.playing ? "Já está aberto" : ""}>
-                      Jogar
-                    </button>
-                  </td>
-                </tr>
+                <Fragment key={g.id}>
+                  <tr>
+                    <td>{g.title}{g.playing && <span className="badge">jogando agora</span>}</td>
+                    <td>{g.platform ?? <span className="muted">não identificado</span>}</td>
+                    <td>{formatDuration(g.seconds_played)}</td>
+                    <td>
+                      {g.dolphin && (
+                        <button aria-expanded={openGame === g.id} onClick={() => setOpenGame(openGame === g.id ? null : g.id)}>
+                          Ajustes
+                        </button>
+                      )}{" "}
+                      <button disabled={!g.identified || !g.has_emulator || g.playing} onClick={() => play(g)}
+                        title={!g.identified ? "Jogo não identificado" : !g.has_emulator ? "Configure um emulador" : g.playing ? "Já está aberto" : ""}>
+                        Jogar
+                      </button>
+                    </td>
+                  </tr>
+                  {openGame === g.id && info && (
+                    <tr><td colSpan={4}><GameSettings gameId={g.id} info={info} notify={show} /></td></tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -131,6 +146,8 @@ export default function App() {
           </>
         )}
       </section>
+
+      {info?.detected && <DolphinPanel info={info} notify={show} refreshInfo={() => refresh().catch(fail)} />}
 
       <section>
         <h2>Emuladores</h2>
