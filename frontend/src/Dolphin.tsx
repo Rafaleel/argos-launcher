@@ -150,8 +150,14 @@ export function GameSettings({ gameId, info, notify }: { gameId: number; info: D
   const [mine, setMine] = useState<VideoSettings>({});
   const [archive, setArchive] = useState("");
   const [job, setJob] = useState<PackJob | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const load = () =>
-    api.profile(gameId).then((p) => { setProfile(p); setMine(p.settings); }).catch((e) => notify(e.message, true));
+    api.profile(gameId).then((p) => {
+      setProfile(p);
+      setMine(p.settings);
+      // reopening the panel while an install runs must pick the progress up again
+      api.packJob().then((j) => { if (j.state === "running" && j.game_id === p.game_code) setJob(j); }).catch(() => undefined);
+    }).catch((e) => notify(e.message, true));
 
   useEffect(() => { load(); }, [gameId]);
 
@@ -172,13 +178,21 @@ export function GameSettings({ gameId, info, notify }: { gameId: number; info: D
     api.installTextures(gameId, archive.trim())
       .then(() => setJob({ state: "running", message: "Extraindo o pacote…", game_id: profile.game_code }))
       .catch((e) => notify(e.message, true));
-  const remove = () =>
+  const remove = () => {
+    setConfirming(false);
     api.removeTextures(gameId).then(() => { notify("Pacote removido."); load(); }).catch((e) => notify(e.message, true));
+  };
 
   return (
     <div className="card">
       <h3>Vídeo deste jogo</h3>
       <p className="muted">"Padrão" usa o valor da seção Dolphin. ID do jogo: {profile.game_code ?? "não consegui ler"}.</p>
+      {profile.game_code === null && (
+        <div className="msg err">
+          Não consegui ler o ID deste jogo (formatos como RVZ, WBFS e CISO não trazem o ID no começo do arquivo).
+          Backend e placa de vídeo funcionam, mas resolução, anisotropia, VSync e texturas não serão aplicados.
+        </div>
+      )}
       <VideoForm value={mine} onChange={setMine} />
       <p>
         <button onClick={() => api.saveProfile(gameId, mine).then((v) => { setMine(v); notify("Ajustes do jogo salvos."); load(); }).catch((e) => notify(e.message, true))}>
@@ -193,12 +207,20 @@ export function GameSettings({ gameId, info, notify }: { gameId: number; info: D
           <div className="row">
             <div className="grow">
               <label>Arquivo do pacote (.zip, .7z, .rar; caminho absoluto)</label>
-              <input aria-label="Arquivo do pacote de texturas" value={archive} onChange={(e) => setArchive(e.target.value)} placeholder="/home/rafael/Downloads/pacote.zip" />
+              <input aria-label="Arquivo do pacote de texturas" value={archive} onChange={(e) => setArchive(e.target.value)} placeholder="/caminho/do/pacote.zip" />
             </div>
             <button onClick={install} disabled={!archive.trim() || info.running || job?.state === "running" || !info.seven_zip}>
               {t.installed ? "Reinstalar" : "Instalar"}
             </button>
-            {t.installed && <button onClick={remove} disabled={info.running || job?.state === "running"}>Remover</button>}
+            {t.installed && !confirming && (
+              <button onClick={() => setConfirming(true)} disabled={info.running || job?.state === "running"}>Remover</button>
+            )}
+            {t.installed && confirming && (
+              <>
+                <button onClick={remove}>Confirmar remoção</button>
+                <button onClick={() => setConfirming(false)}>Cancelar</button>
+              </>
+            )}
           </div>
           {!info.seven_zip && <p className="muted">Instale o p7zip (comando 7z) para extrair pacotes.</p>}
           {job?.state === "running" && <p>{job.message} Pode levar alguns minutos para pacotes grandes.</p>}

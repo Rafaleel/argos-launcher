@@ -5,6 +5,7 @@ Facts verified on a real Dolphin 2609b (Flatpak) with a hybrid Intel + NVIDIA la
 - `-v` selects the backend; the PRIME environment variables select the NVIDIA GPU
   for both OpenGL and Vulkan (checked with nvidia-smi and Dolphin's own log).
 """
+import functools
 import os
 import re
 import shutil
@@ -35,7 +36,8 @@ class Install:
 def detect(executable: str, args: list[str]) -> Install | None:
     """Return the Dolphin install an emulator entry points at, or None."""
     home = Path.home()
-    if os.path.basename(executable) == "flatpak" and FLATPAK_ID in args:
+    # `flatpak run <id>` or the exported wrapper script named after the app id
+    if (os.path.basename(executable) == "flatpak" and FLATPAK_ID in args) or os.path.basename(executable) == FLATPAK_ID:
         base = home / ".var" / "app" / FLATPAK_ID
         return Install(True, base / "config" / "dolphin-emu", base / "data" / "dolphin-emu")
     if "dolphin-emu" in os.path.basename(executable).lower():
@@ -46,12 +48,13 @@ def detect(executable: str, args: list[str]) -> Install | None:
     return None
 
 
-def is_running() -> bool:
-    for entry in os.scandir("/proc"):
+def is_running(proc: str = "/proc") -> bool:
+    for entry in os.scandir(proc):
         if entry.name.isdigit():
             try:
-                with open(f"/proc/{entry.name}/comm") as f:
-                    if f.read().strip() == "dolphin-emu":
+                with open(f"{proc}/{entry.name}/comm") as f:
+                    # the kernel cuts comm at 15 chars: "dolphin-emu-nogui" reads "dolphin-emu-nog"
+                    if f.read().strip().startswith("dolphin-emu"):
                         return True
             except OSError:
                 pass
@@ -94,50 +97,88 @@ def _fmt(value) -> str:
     return ("True" if value else "False") if isinstance(value, bool) else str(value)
 
 
-def set_ini_values(path: Path, changes: dict[tuple[str, str], str]) -> None:
-    """Set keys in a Dolphin INI, keeping every other line. Written atomically."""
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    for (section, key), value in changes.items():
-        header = f"[{section}]"
-        start = next((i for i, l in enumerate(lines) if l.strip() == header), None)
+def _read_text(path: Path) -> str:
+    # surrogateescape keeps bytes that are not UTF-8 intact, so a Latin-1 comment
+    # neither crashes a launch nor gets mangled when we write the file back.
+    return path.read_bytes().decode("utf-8", "surrogateescape")
+
+
+def set_ini_values(
+    path: Path, changes: dict[tuple[str, str], str], remove: frozenset[tuple[str, str]] = frozenset()
+) -> None:
+    """Set or remove keys in a Dolphin INI, keeping every other line (and CRLF).
+
+    Section and key names are matched ignoring case, like Dolphin does.
+    """
+    text = _read_text(path) if path.exists() else ""
+    nl = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+
+    def find(section: str, key: str):
+        start = next((i for i, l in enumerate(lines) if l.strip().lower() == f"[{section}]".lower()), None)
         if start is None:
-            lines += ([""] if lines else []) + [header, f"{key} = {value}"]
-            continue
+            return None, None, None
         end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("[")), len(lines))
-        hit = next((i for i in range(start + 1, end) if re.match(rf"\s*{re.escape(key)}\s*=", lines[i])), None)
+        hit = next((i for i in range(start + 1, end) if re.match(rf"\s*{re.escape(key)}\s*=", lines[i], re.I)), None)
+        return start, end, hit
+
+    for section, key in remove:
+        _, _, hit = find(section, key)
         if hit is not None:
+            del lines[hit]
+    for (section, key), value in changes.items():
+        start, end, hit = find(section, key)
+        if start is None:
+            lines += ([""] if lines else []) + [f"[{section}]", f"{key} = {value}"]
+        elif hit is not None:
             lines[hit] = f"{key} = {value}"
         else:
             at = end
             while at > start + 1 and not lines[at - 1].strip():
                 at -= 1
             lines.insert(at, f"{key} = {value}")
-    _write_atomic(path, "\n".join(lines) + "\n")
+    _write_atomic(path, nl.join(lines) + nl)
 
 
 def _write_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".")
+    target = Path(os.path.realpath(path))  # write through a symlink instead of replacing it
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=target.name + ".")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, path)
+        with os.fdopen(fd, "wb") as f:
+            f.write(text.encode("utf-8", "surrogateescape"))
+        if target.exists():
+            shutil.copymode(target, tmp)  # mkstemp makes 0600; keep the file's own mode
+        else:
+            os.chmod(tmp, 0o644)
+        os.replace(tmp, target)
     except BaseException:
         os.unlink(tmp)
         raise
 
 
-def apply_game_settings(install: Install, game_id: str, settings: dict) -> None:
-    changes = {INI_KEYS[k]: _fmt(v) for k, v in settings.items() if k in INI_KEYS}
-    if changes:
-        set_ini_values(install.data_dir / "GameSettings" / f"{game_id}.ini", changes)
+def apply_game_settings(install: Install, game_id: str, settings: dict, previous: frozenset[str] = frozenset()) -> set[str]:
+    """Write the managed keys. Keys Argos wrote earlier and that are now "Padrão" are
+    removed, so the Dolphin default comes back; keys it never wrote are left alone.
+    Returns the settings now written, to remember for the next launch."""
+    now = {k for k in settings if k in INI_KEYS}
+    changes = {INI_KEYS[k]: _fmt(settings[k]) for k in now}
+    gone = frozenset(INI_KEYS[k] for k in previous if k in INI_KEYS and k not in now)
+    if changes or gone:
+        set_ini_values(install.data_dir / "GameSettings" / f"{game_id}.ini", changes, gone)
+    return now
 
 
 def launch_plan(install: Install, args: list[str], settings: dict) -> tuple[list[str], dict[str, str]]:
     """Extra arguments and environment for the launch. `args` is the emulator template."""
     args, env = list(args), {}
     if settings.get("gpu") == "nvidia":
-        if install.flatpak and "run" in args:
+        if install.flatpak and "run" not in args:
+            raise ValueError(
+                "Para escolher a placa de vídeo com o Flatpak, cadastre o emulador como /usr/bin/flatpak "
+                f"com os argumentos run, {FLATPAK_ID}, … (o script exportado não repassa o ambiente)"
+            )
+        if install.flatpak:
             at = args.index("run") + 1  # Flatpak options must come before the app id
             args[at:at] = [f"--env={k}={v}" for k, v in NVIDIA_ENV.items()]
         else:
@@ -163,20 +204,23 @@ def read_game_id(path: str) -> str | None:
 # ---------------------------------------------------------------- hardware info
 
 
-def gpu_names() -> list[str]:
+@functools.lru_cache(maxsize=1)
+def gpu_names() -> tuple[str, ...]:
+    """Cached: lspci can take seconds and wakes a sleeping discrete GPU."""
     try:
         out = subprocess.run(["lspci", "-mm"], capture_output=True, text=True, timeout=10).stdout
     except (OSError, subprocess.SubprocessError):
-        return []
+        return ()
     names = []
     for line in out.splitlines():
         if re.search(r'"(VGA compatible controller|3D controller|Display controller)"', line):
             parts = re.findall(r'"([^"]*)"', line)
             if len(parts) >= 3:  # class, vendor, device; the rest is the board's subsystem
                 names.append(f"{parts[1]} {parts[2]}")
-    return names
+    return tuple(names)
 
 
+@functools.lru_cache(maxsize=1)
 def nvidia_flatpak_ready() -> bool | None:
     """True if a Flatpak NVIDIA GL extension is installed; None if flatpak is missing."""
     try:
@@ -227,8 +271,12 @@ def pack_status(install: Install, game_id: str) -> dict:
         if d.is_dir() and not d.is_symlink():
             files = size = 0
             for dp, _, fs in os.walk(d):
-                files += len(fs)
-                size += sum(os.path.getsize(os.path.join(dp, f)) for f in fs)
+                for f in fs:
+                    try:
+                        size += os.lstat(os.path.join(dp, f)).st_size  # a broken symlink must not 500
+                    except OSError:
+                        continue
+                    files += 1
             return {"installed": True, "folder": name, "files": files, "bytes": size}
     return {"installed": False, "folder": None, "files": 0, "bytes": 0}
 
@@ -324,6 +372,10 @@ def start_install(install: Install, game_id: str, archive: str) -> bool:
     return True
 
 
+def install_running() -> bool:
+    return _pack_lock.locked()
+
+
 def remove_pack(install: Install, game_id: str) -> bool:
     root = textures_root(install)
     removed = False
@@ -383,10 +435,10 @@ def write_pad1(install: Install, preset: str, device: str | None) -> None:
     if preset not in PRESETS:
         raise ValueError("preset desconhecido")
     device = KB_DEVICE if preset.startswith("keyboard") else device
-    if not device or not DEVICE.match(device):
+    if not device or not DEVICE.fullmatch(device):  # fullmatch: "$" would accept a trailing newline
         raise ValueError("dispositivo inválido (esperado algo como SDL/0/Nome do controle)")
     path = install.config_dir / "GCPadNew.ini"
-    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    old = _read_text(path) if path.exists() else ""
     backup = path.with_name(path.name + ".argos-bak")
     if old and not backup.exists():
         shutil.copy2(path, backup)  # keep the very first file, never overwrite the backup
@@ -402,12 +454,15 @@ def write_pad1(install: Install, preset: str, device: str | None) -> None:
 
 def read_pad1_device(install: Install) -> str | None:
     path = install.config_dir / "GCPadNew.ini"
-    if not path.exists():
-        return None
+    try:
+        text = _read_text(path)
+    except OSError:
+        return None  # missing or unreadable: the info page must still load
     inside = False
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         if line.startswith("["):
             inside = line.strip() == "[GCPad1]"
         elif inside and line.startswith("Device"):
-            return line.split("=", 1)[1].strip()
+            value = line.split("=", 1)[1].strip()
+            return value.encode("utf-8", "surrogateescape").decode("utf-8", "replace")  # JSON-safe
     return None

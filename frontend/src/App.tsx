@@ -24,11 +24,11 @@ export default function App() {
   const fail = (e: unknown) => show(e instanceof Error ? e.message : String(e), true);
 
   const refresh = useCallback(async () => {
-    const [g, p, e, pt, gt, per, di] = await Promise.all([
+    // Dolphin info is separate on purpose: if it fails, the library and stats must still refresh.
+    api.dolphinInfo().then(setInfo).catch(() => undefined);
+    const [g, p, e, pt, gt, per] = await Promise.all([
       api.games(), api.platforms(), api.emulators(), api.statsPlatforms(), api.statsGames(), api.statsPeriods(by),
-      api.dolphinInfo(),
     ]);
-    setInfo(di);
     setGames(g);
     setPlatforms(p);
     setEmulators(e);

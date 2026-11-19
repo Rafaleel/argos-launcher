@@ -8,6 +8,7 @@ import pytest
 
 from app.emulators import dolphin
 from app.emulators.dolphin import Install, VideoSettings
+from tests.conftest import REAL_IS_RUNNING
 
 needs_7z = pytest.mark.skipif(not dolphin.seven_zip(), reason="7z not installed")
 
@@ -233,10 +234,10 @@ LSPCI = (
 
 def test_gpu_names_use_the_chip_vendor_not_the_board_vendor(monkeypatch):
     monkeypatch.setattr(dolphin.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": LSPCI})())
-    assert dolphin.gpu_names() == [
+    assert dolphin.gpu_names() == (
         "Intel Corporation Raptor Lake-P [UHD Graphics]",
         "NVIDIA Corporation AD107M [GeForce RTX 4060 Max-Q / Mobile]",
-    ]
+    )
 
 
 def test_gpu_names_survive_a_missing_lspci(monkeypatch):
@@ -244,7 +245,7 @@ def test_gpu_names_survive_a_missing_lspci(monkeypatch):
         raise FileNotFoundError("lspci")
 
     monkeypatch.setattr(dolphin.subprocess, "run", boom)
-    assert dolphin.gpu_names() == []
+    assert dolphin.gpu_names() == ()
 
 
 def test_controller_candidates_only_list_devices_with_a_js_handler(tmp_path, monkeypatch):
@@ -257,3 +258,78 @@ def test_controller_candidates_only_list_devices_with_a_js_handler(tmp_path, mon
     real = Path
     monkeypatch.setattr(dolphin, "Path", lambda p: fake if p == "/proc/bus/input/devices" else real(p))
     assert dolphin.controller_candidates() == [{"name": "Xbox Wireless Controller", "device": "SDL/0/Xbox Wireless Controller"}]
+
+
+def test_gpu_lookup_runs_lspci_only_once(monkeypatch):
+    calls = []
+    monkeypatch.setattr(dolphin.subprocess, "run", lambda *a, **k: calls.append(1) or type("R", (), {"stdout": LSPCI})())
+    dolphin.gpu_names(), dolphin.gpu_names(), dolphin.gpu_names()
+    assert len(calls) == 1  # lspci took 2 s and woke the sleeping NVIDIA card on every refresh
+
+
+def test_detect_exported_flatpak_wrapper_and_nogui_running(tmp_path):
+    wrapper = dolphin.detect("/var/lib/flatpak/exports/bin/org.DolphinEmu.dolphin-emu", ["-b", "-e", "{rom}"])
+    assert wrapper.flatpak and "/.var/app/" in str(wrapper.data_dir)  # not the native folders
+    for comm, expected in (("dolphin-emu", True), ("dolphin-emu-nog", True), ("firefox", False)):
+        proc = tmp_path / comm
+        (proc / "123").mkdir(parents=True)
+        (proc / "123" / "comm").write_text(comm + "\n")
+        assert REAL_IS_RUNNING(str(proc)) is expected
+
+
+def test_wrapper_cannot_select_the_gpu_and_says_so():
+    wrapper = dolphin.detect("/var/lib/flatpak/exports/bin/org.DolphinEmu.dolphin-emu", [])
+    with pytest.raises(ValueError, match="flatpak"):
+        dolphin.launch_plan(wrapper, ["-b"], {"gpu": "nvidia"})
+    assert dolphin.launch_plan(wrapper, ["-b"], {"internal_resolution": 2}) == (["-b"], {})  # no GPU asked: fine
+
+
+def test_default_undoes_what_argos_wrote_but_not_what_the_user_wrote(tmp_path):
+    ins = Install(False, tmp_path / "c", tmp_path / "d")
+    ini = ins.data_dir / "GameSettings" / "GHAE08.ini"
+    ini.parent.mkdir(parents=True)
+    ini.write_text("[Video_Settings]\nHiresTextures = True\n[Video_Hardware]\nVSync = True\n")  # the user's own keys
+    wrote = dolphin.apply_game_settings(ins, "GHAE08", {"internal_resolution": 6, "vsync": False})
+    assert "InternalResolution = 6" in ini.read_text() and "VSync = False" in ini.read_text()
+    wrote = dolphin.apply_game_settings(ins, "GHAE08", {}, frozenset(wrote))  # back to "Padrão"
+    text = ini.read_text()
+    assert "InternalResolution" not in text and "VSync" not in text  # Argos' keys are gone
+    assert "HiresTextures = True" in text  # the user's own key survives
+    dolphin.apply_game_settings(ins, "GHAE08", {}, frozenset())  # nothing recorded: nothing removed
+    assert "HiresTextures = True" in ini.read_text()
+
+
+def test_ini_keeps_crlf_non_utf8_bytes_case_and_symlink_and_mode(tmp_path):
+    real = tmp_path / "real.ini"
+    real.write_bytes(b"; Ol\xe1\r\n[Video_Hardware]\r\nvsync = True\r\n")  # Latin-1 comment, CRLF, lower-case key
+    real.chmod(0o640)
+    link = tmp_path / "GHAE08.ini"
+    link.symlink_to(real)
+    dolphin.set_ini_values(link, {("Video_Hardware", "VSync"): "False", ("Video_Settings", "InternalResolution"): "3"})
+    assert link.is_symlink()  # written through, not replaced
+    raw = real.read_bytes()
+    assert b"; Ol\xe1\r\n" in raw and raw.count(b"\r\n") == raw.count(b"\n")  # bytes and CRLF kept
+    assert raw.lower().count(b"vsync") == 1 and b"VSync = False" in raw  # same key, no duplicate
+    assert (real.stat().st_mode & 0o777) == 0o640
+    fresh = tmp_path / "new.ini"
+    dolphin.set_ini_values(fresh, {("A", "b"): "1"})
+    assert (fresh.stat().st_mode & 0o777) == 0o644
+
+
+def test_pad_device_with_trailing_newline_is_refused_and_unreadable_pad_file_is_tolerated(tmp_path):
+    ins = Install(False, tmp_path / "c", tmp_path / "d")
+    with pytest.raises(ValueError):
+        dolphin.write_pad1(ins, "xbox", "SDL/0/Pad\n")
+    ins.config_dir.mkdir()
+    (ins.config_dir / "GCPadNew.ini").write_bytes(b"[GCPad1]\nDevice = SDL/0/Pad\xe9\n")
+    assert dolphin.read_pad1_device(ins).startswith("SDL/0/Pad")  # used to raise UnicodeDecodeError
+    dolphin.write_pad1(ins, "keyboard_wasd", None)  # and writing over it works
+
+
+def test_pack_status_survives_a_broken_symlink(tmp_path):
+    ins = Install(False, tmp_path / "c", tmp_path / "d")
+    pack = dolphin.textures_root(ins) / "GHA"
+    pack.mkdir(parents=True)
+    (pack / "a.dds").write_bytes(b"x" * 10)
+    (pack / "broken").symlink_to(tmp_path / "nowhere")
+    assert dolphin.pack_status(ins, "GHAE08")["installed"] is True

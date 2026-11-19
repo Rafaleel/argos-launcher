@@ -159,14 +159,22 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     args, env = json.loads(emu["args"]), {}
     install = dolphin.detect(emu["executable"], args)
     if install:
+        # Check first: a refused play must not rewrite the INI of a game that is already open.
+        if conn.execute("SELECT 1 FROM sessions WHERE game_id = ? AND ended_at IS NULL", (game_id,)).fetchone():
+            raise HTTPException(409, "Este jogo já está aberto")
         settings = store.effective_for(conn, game_id)
         game_code = next((c for p in paths if os.path.exists(p) and (c := dolphin.read_game_id(p))), None)
+        if dolphin.install_running() and dolphin.JOB["game_id"] == game_code:
+            raise HTTPException(409, "O pacote de texturas deste jogo ainda está sendo instalado")
         try:
             if game_code:
-                dolphin.apply_game_settings(install, game_code, settings)
+                written = dolphin.apply_game_settings(install, game_code, settings, store.get_written(conn, game_id))
+                store.set_written(conn, game_id, written)
+            args, env = dolphin.launch_plan(install, args, settings)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         except OSError as exc:
             raise HTTPException(500, f"Não foi possível gravar a configuração do Dolphin: {exc}") from exc
-        args, env = dolphin.launch_plan(install, args, settings)
     try:
         pid, session_id = start_session(
             conn, game_id, lambda: launch(emu["executable"], args, paths, env)

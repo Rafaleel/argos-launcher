@@ -48,3 +48,20 @@ def set_game(conn: sqlite3.Connection, game_id: int, settings: VideoSettings) ->
 
 def effective_for(conn: sqlite3.Connection, game_id: int) -> dict:
     return effective(get_defaults(conn), get_game(conn, game_id))
+
+
+def get_written(conn: sqlite3.Connection, game_id: int) -> frozenset[str]:
+    """Settings Argos last wrote into the game's Dolphin INI (so "Padrão" can undo them)."""
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (f"dolphin_ini:{game_id}",)).fetchone()
+    try:
+        return frozenset(json.loads(row["value"])) if row else frozenset()
+    except (ValueError, TypeError):
+        return frozenset()
+
+
+def set_written(conn: sqlite3.Connection, game_id: int, keys: set[str]) -> None:
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (f"dolphin_ini:{game_id}", json.dumps(sorted(keys))),
+    )
+    conn.commit()
