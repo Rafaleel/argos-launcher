@@ -83,8 +83,9 @@ frontend (React)  ──HTTP──>  backend (FastAPI)
 
 ### Modelo de dados (SQLite)
 
-- `games` — id, título, plataforma, metadados, capa
-- `files` — id, game_id, caminho, tamanho, crc32, sha1
+- `settings` — chave, valor (JSON): pastas de ROMs e de DATs
+- `games` — id, chave (única), título, plataforma (nome do cabeçalho do DAT), identificado, capa
+- `files` — id, game_id, caminho, tamanho, mtime_ns, crc32, sha1, crc32_nohdr, sha1_nohdr (o hash guardado serve de cache do scan)
 - `emulators` — id, plataforma, caminho do executável, template de comando
 - `sessions` — id, game_id, início, fim, último batimento (a duração é calculada como fim − início na consulta, não guardada)
 - `milestones` — id, game_id, ordem, nome (marcos da história principal, escritos à mão)
@@ -92,6 +93,14 @@ frontend (React)  ──HTTP──>  backend (FastAPI)
 - `progress_estimates` — id, game_id, timestamp, média, limite inferior, limite superior
 
 **Regra:** os sinais brutos são sempre guardados. Se o filtro mudar, o histórico inteiro pode ser reprocessado.
+
+### Limites conhecidos da fase 1
+
+- Uma subpasta desmontada dentro de uma pasta configurada saudável perde as linhas dela (voltam quando a pasta volta, com novo hash).
+- Fase 2: `sessions.game_id` não tem regra de remoção e as chaves estrangeiras estão ligadas; apagar um jogo já jogado vai falhar. Trocar por marcar arquivos como ausentes.
+- O scan é uma requisição única e longa; em ISOs muito grandes o navegador pode desistir (o scan continua e grava o resultado).
+- Uma pasta configurada que fica vazia (último jogo apagado ou movido para outra pasta) mantém as linhas antigas, com aviso, porque não dá para distinguir de um disco desmontado. Para limpar, tire a pasta das configurações.
+- Lista de pastas de ROMs vazia é recusada: a biblioteca não pode ser zerada pela interface.
 
 ## 5. Ordem de construção
 
