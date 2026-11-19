@@ -70,6 +70,21 @@ export function VideoForm({ value, onChange, isDefault = false }: { value: Video
       <Tri label="Texturas HD (personalizadas)" value={value.hires_textures} onChange={(hires_textures) => set({ hires_textures })} />
       <Tri label="Pré-carregar texturas" value={value.prefetch_textures} onChange={(prefetch_textures) => set({ prefetch_textures })} />
     </div>
+    <h4>Janela e entrada</h4>
+    <p className="muted">
+      Se o teclado parar de responder depois de você clicar fora do jogo e voltar (bug conhecido do Dolphin no Linux), teste
+      estas opções, uma de cada vez. Valem para os jogos abertos pelo Argos e não mudam os arquivos do Dolphin.
+    </p>
+    <div className="grid-form">
+      <Tri label="Renderizar na janela principal" value={value.render_to_main} onChange={(render_to_main) => set({ render_to_main })} />
+      <Tri label="Entrada em segundo plano" value={value.background_input} onChange={(background_input) => set({ background_input })} />
+      <Tri label="Manter janela no topo" value={value.keep_on_top} onChange={(keep_on_top) => set({ keep_on_top })} />
+    </div>
+    <p className="muted">
+      Renderizar na janela principal: contorno que apareceu em relatos do mesmo bug; a janela do jogo é a principal do Dolphin e
+      começa pequena. Entrada em segundo plano: o Dolphin deixa de exigir foco, mas o jogo pode reagir a teclas de outros
+      programas. Manter no topo: citado como contorno, sem garantia.
+    </p>
     {openGl && (
       <p className="muted">
         Atenção: no Dolphin 2609b o OpenGL tem um bug conhecido (issue 13354): depois que a janela do jogo perde o foco
