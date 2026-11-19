@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from pathlib import Path
 
@@ -62,6 +63,11 @@ CREATE TABLE IF NOT EXISTS game_profiles (
     game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
     data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ra_games (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+    ra_id INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signals_game ON signals(game_id, type, id);
 CREATE TABLE IF NOT EXISTS progress_estimates (
     id INTEGER PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES games(id),
@@ -82,6 +88,10 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     # FastAPI opens the connection in one worker thread and runs the endpoint in
     # another; a request uses it from one thread at a time.
     conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT, check_same_thread=False)
+    try:
+        os.chmod(path, 0o600)  # the database holds the RetroAchievements key: owner only
+    except OSError:
+        pass
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")

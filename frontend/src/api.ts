@@ -7,7 +7,19 @@ export type Game = {
   playing: boolean;
   seconds_played: number;
   dolphin: boolean;
+  ra_id: number | null;
+  achievements: AchievementSummary | null;
 };
+export type AchievementSummary = {
+  title: string;
+  total: number;
+  earned: number;
+  earned_hardcore: number;
+  percent: number | null;
+  synced_at: string | null;
+};
+export type RaSettings = { user: string; has_key: boolean };
+export type RaSyncResult = { game_id: number; title: string; ok: boolean; message: string };
 export type PlatformTime = { platform: string | null; seconds: number };
 export type GameTime = { game_id: number; title: string; platform: string | null; seconds: number; sessions: number; last_played: string | null };
 export type Period = { period: string; seconds: number };
@@ -100,5 +112,11 @@ export const api = {
   removeTextures: (id: number) => call<{ removed: boolean }>(`/games/${id}/textures`, "DELETE"),
   packJob: () => call<PackJob>("/dolphin/textures/job"),
   saveControls: (preset: string, device: string | null) => call<{ device: string | null }>("/dolphin/controls", "PUT", { preset, device }),
+  raSettings: () => call<RaSettings>("/ra/settings"),
+  saveRaSettings: (user: string, key: string | null) => call<RaSettings>("/ra/settings", "PUT", key === null ? { user } : { user, key }),
+  gameRa: (id: number) => call<{ ra_id: number | null; summary: AchievementSummary | null }>(`/games/${id}/ra`),
+  saveGameRa: (id: number, ra: string) => call<{ ra_id: number | null }>(`/games/${id}/ra`, "PUT", { ra }),
+  syncGameRa: (id: number) => call<AchievementSummary>(`/games/${id}/ra/sync`, "POST"),
+  syncAllRa: () => call<RaSyncResult[]>("/ra/sync", "POST"),
   play: (id: number) => call<{ pid: number; session_id: number }>(`/games/${id}/play`, "POST"),
 };
