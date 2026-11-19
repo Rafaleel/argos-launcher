@@ -58,6 +58,10 @@ CREATE TABLE IF NOT EXISTS signals (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_game ON sessions(game_id, ended_at);
 CREATE INDEX IF NOT EXISTS idx_files_game ON files(game_id);
+CREATE TABLE IF NOT EXISTS game_profiles (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+    data TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS progress_estimates (
     id INTEGER PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES games(id),
