@@ -7,3 +7,6 @@ frontend/dist/
 *.db-wal
 *.db-shm
 .env
+
+# Game images and texture packs: large and copyrighted, never commit
+ISOs/
