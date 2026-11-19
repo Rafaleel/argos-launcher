@@ -1,3 +1,4 @@
+import os
 import pytest
 
 from app.db import connect
@@ -6,6 +7,14 @@ from app.db import connect
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setenv("ARGOS_DB", str(tmp_path / "test.db"))
+    # Dolphin's folders hang off HOME: tests must never touch the real ones.
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    yield
+    # A test that called monkeypatch.undo() would point the next calls at the real files.
+    assert os.environ.get("ARGOS_DB", "").startswith(str(tmp_path)), "test isolation was undone"
+    assert os.environ.get("HOME") == str(tmp_path / "home"), "test isolation was undone"
 
 
 @pytest.fixture
