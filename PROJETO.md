@@ -123,6 +123,7 @@ O Argos configura o Dolphin sem abrir a interface dele. Vale só para emuladores
   - "Padrão" desfaz só o que o Argos gravou (ele lembra as chaves por jogo, a partir do primeiro jogo aberto com esta versão); chaves que você mesmo pôs no `.ini` do jogo não são apagadas.
   - Sem ID do jogo (RVZ, WBFS, GCZ e CISO não trazem o ID no começo do arquivo), resolução, anisotropia, VSync e texturas não são aplicados; backend e placa de vídeo continuam valendo. A tela avisa.
   - Escolher a placa de vídeo com Flatpak exige cadastrar o emulador como `flatpak` com `run <id>`; o script exportado (`.../exports/bin/org.DolphinEmu.dolphin-emu`) não repassa o ambiente, e o Argos recusa a combinação com uma mensagem.
+  - **OpenGL tem um bug de teclado no Dolphin 2609b** (issue 13354 do Dolphin; correção mesclada em 14/11/2026, ainda fora do Flatpak): depois que a janela do jogo perde o foco uma vez, ela deixa de receber eventos de foco e de teclado. Medido no Flatpak instalado: a janela do jogo em OpenGL não tem as máscaras `FocusChange` e `KeyPress`; em Vulkan tem. Use Vulkan; a tela avisa quando o backend não é Vulkan. O "Background Input" é um contorno documentado, mas faz o jogo reagir a teclas de outros programas.
   - A lista de placas vem do `lspci` (lido uma vez e guardado: pode levar uns 2 s e acordar a placa dedicada na primeira consulta).
   - Só o Dolphin tem adaptador; a estrutura permite acrescentar o RetroArch depois.
 

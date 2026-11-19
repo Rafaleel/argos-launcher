@@ -23,9 +23,13 @@ function Tri({ label, value, onChange, on = "Ligado", off = "Desligado" }: {
   );
 }
 
-export function VideoForm({ value, onChange }: { value: VideoSettings; onChange: (v: VideoSettings) => void }) {
+export function VideoForm({ value, onChange, isDefault = false }: { value: VideoSettings; onChange: (v: VideoSettings) => void; isDefault?: boolean }) {
   const set = (patch: Partial<VideoSettings>) => onChange({ ...value, ...patch });
+  // Measured on Dolphin 2609b: with OpenGL the game window loses its focus and key events
+  // (Dolphin issue 13354). In the defaults form "Padrão" also means OpenGL; in a game it means "inherit".
+  const openGl = value.backend === "OGL" || (isDefault && !value.backend);
   return (
+    <>
     <div className="grid-form">
       <div>
         <label>Backend de vídeo</label>
@@ -66,6 +70,13 @@ export function VideoForm({ value, onChange }: { value: VideoSettings; onChange:
       <Tri label="Texturas HD (personalizadas)" value={value.hires_textures} onChange={(hires_textures) => set({ hires_textures })} />
       <Tri label="Pré-carregar texturas" value={value.prefetch_textures} onChange={(prefetch_textures) => set({ prefetch_textures })} />
     </div>
+    {openGl && (
+      <p className="muted">
+        Atenção: no Dolphin 2609b o OpenGL tem um bug conhecido (issue 13354): depois que a janela do jogo perde o foco
+        uma vez, o teclado pode parar de responder. Prefira Vulkan.
+      </p>
+    )}
+    </>
   );
 }
 
@@ -108,7 +119,7 @@ export function DolphinPanel({ info, notify, refreshInfo }: { info: DolphinInfo;
       <div className="card">
         <h3>Vídeo: padrão para todos os jogos</h3>
         <p className="muted">"Padrão" deixa o valor como o Dolphin já tem. Cada jogo pode mudar isso em "Ajustes".</p>
-        <VideoForm value={defaults} onChange={setDefaults} />
+        <VideoForm value={defaults} onChange={setDefaults} isDefault />
         <p><button onClick={save}>Salvar padrões</button></p>
       </div>
 
