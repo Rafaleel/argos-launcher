@@ -128,6 +128,17 @@ O Argos configura o Dolphin sem abrir a interface dele. Vale só para emuladores
   - A lista de placas vem do `lspci` (lido uma vez e guardado: pode levar uns 2 s e acordar a placa dedicada na primeira consulta).
   - Só o Dolphin tem adaptador; a estrutura permite acrescentar o RetroArch depois.
 
+## Fase 3: conquistas do RetroAchievements
+
+Primeiro sinal de progresso: o `Collector` do RetroAchievements grava um sinal `achievements` por sincronização (os sinais antigos ficam, para reprocessar depois). A tela mostra "ganhas de total (%)" por jogo, e há "Sincronizar" por jogo e para todos os vinculados.
+
+- **Credenciais:** usuário e chave de API ficam no banco local (que passa a ter permissão `600`). A chave é só de escrita: nenhuma rota a devolve, e as mensagens de erro nunca levam a URL (a chave vai na consulta, como a API exige).
+- **Vínculo manual:** você informa o ID do jogo no RetroAchievements (ou a URL da página). A identificação automática por hash não existe: o hash de GameCube do RetroAchievements é próprio (não é o MD5 do arquivo nem o hash do Redump), e só dá para validar uma implementação com a sua chave.
+- **Cliente:** `API_GetGameInfoAndUserProgress` (`y` = chave, `u` = usuário, `g` = jogo). Sem redirecionamentos, tempo limite de 15 s, resposta limitada a 8 MB, uma pausa de 1 s entre jogos ao sincronizar vários, e para na primeira chave recusada ou limite de uso.
+- **O que NÃO foi verificado:** nenhuma chamada real foi feita (não havia chave). Os nomes dos campos seguem a documentação, que mostra duas grafias; o leitor aceita as duas e, se vier outra forma, avisa quais chaves recebeu. O primeiro "Sincronizar" real é o teste de verdade.
+- **Não é progresso da história:** "conquistas ganhas ÷ total" mede conquistas. A estimativa de progresso (e a tabela `progress_estimates`) fica para a fusão de sinais da fase 5; por isso a fase 3 não grava estimativas com intervalo.
+- **GameCube:** o RetroAchievements suporta GameCube desde 2024, mas os IDs de RE2 (provável 3176), RE3 (provável 6870) e Code Veronica X de GameCube não foram confirmados (o site bloqueou a consulta automática). Confira a página no site antes de vincular; "Code Veronica Kanzenban" (3866) é outro jogo.
+
 ## 5. Ordem de construção
 
 | Fase | Entrega | Critério de pronto |

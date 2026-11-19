@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, By, DolphinInfo, Emulator, Game, GameTime, Period, PlatformTime, ScanResult, formatDuration } from "./api";
 import { DolphinPanel, GameSettings } from "./Dolphin";
+import { GameAchievements, RaPanel, achievementText } from "./RetroAchievements";
 
 const lines = (s: string) => s.split("\n");
 
@@ -99,7 +100,7 @@ export default function App() {
         <h2>Jogos</h2>
         {games.length === 0 ? <p className="muted">Nenhum jogo ainda. Escaneie uma pasta.</p> : (
           <table>
-            <thead><tr><th>Título</th><th>Plataforma</th><th>Tempo jogado</th><th /></tr></thead>
+            <thead><tr><th>Título</th><th>Plataforma</th><th>Tempo jogado</th><th>Conquistas</th><th /></tr></thead>
             <tbody>
               {games.map((g) => (
                 <Fragment key={g.id}>
@@ -107,8 +108,9 @@ export default function App() {
                     <td>{g.title}{g.playing && <span className="badge">jogando agora</span>}</td>
                     <td>{g.platform ?? <span className="muted">não identificado</span>}</td>
                     <td>{formatDuration(g.seconds_played)}</td>
+                    <td>{achievementText(g.achievements)}</td>
                     <td>
-                      {g.dolphin && (
+                      {g.identified && (
                         <button aria-expanded={openGame === g.id} onClick={() => setOpenGame(openGame === g.id ? null : g.id)}>
                           Ajustes
                         </button>
@@ -119,8 +121,13 @@ export default function App() {
                       </button>
                     </td>
                   </tr>
-                  {openGame === g.id && info && (
-                    <tr><td colSpan={4}><GameSettings gameId={g.id} info={info} notify={show} /></td></tr>
+                  {openGame === g.id && (
+                    <tr>
+                      <td colSpan={5}>
+                        <GameAchievements gameId={g.id} notify={show} onSynced={() => refresh().catch(fail)} />
+                        {g.dolphin && info && <GameSettings gameId={g.id} info={info} notify={show} />}
+                      </td>
+                    </tr>
                   )}
                 </Fragment>
               ))}
@@ -146,6 +153,8 @@ export default function App() {
           </>
         )}
       </section>
+
+      <RaPanel notify={show} onSynced={() => refresh().catch(fail)} />
 
       {info?.detected && <DolphinPanel info={info} notify={show} refreshInfo={() => refresh().catch(fail)} />}
 

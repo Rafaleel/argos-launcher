@@ -8,6 +8,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import router
 from app.api_dolphin import router as dolphin_router
+from app.api_ra import router as ra_router
 from app.db import connect
 from app.sessions.tracker import close_orphans
 
@@ -26,6 +27,7 @@ app = FastAPI(title="Argos Launcher", lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1"])
 app.include_router(router)
 app.include_router(dolphin_router)
+app.include_router(ra_router)
 
 # Run with: uvicorn app.main:app --host 127.0.0.1
 
