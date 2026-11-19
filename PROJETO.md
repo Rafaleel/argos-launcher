@@ -76,7 +76,7 @@ frontend (React)  ──HTTP──>  backend (FastAPI)
    - **Formatos:** o Redump hasheia as faixas cruas (bin/cue, iso). CHD, RVZ e zip não batem com o hash do DAT. Na fase 1, aceitar só imagens cruas e mostrar "não identificado" para o resto, dizendo o motivo.
    - **Cache:** guardar o hash por caminho, tamanho e data de modificação; só recalcular quando algum deles mudar (ISOs de vários GB).
 2. **Launcher.** Cada plataforma tem um perfil de emulador com template de comando guardado como **lista de argumentos** (ex.: `["pcsx2", "{rom}", "--fullscreen"]`). O processo é aberto sem shell, para que um nome de arquivo com `"` ou `$(...)` não execute comandos.
-3. **Sessões.** A sessão começa ao abrir o jogo e termina quando o **processo do emulador** sai. O processo lançado pode ser só um wrapper (Flatpak, Steam, script) que sai na hora, então o monitor segue o emulador (por nome ou processo filho) e não o PID inicial. Durante a sessão, gravar um batimento periódico. Ao iniciar o app, fechar sessões abertas com o último batimento (cobre queda do app).
+3. **Sessões.** A sessão começa ao abrir o jogo e dura enquanto existir qualquer processo vivo na mesma **sessão do Linux** (o launcher usa `start_new_session`, então o id da sessão é o pid lançado). Isso cobre wrappers que saem na hora (scripts, Flatpak; testado com `flatpak run --command=sleep`). Um batimento é gravado a cada 15 s. Se o relógio pular mais de 60 s (suspensão), a sessão fecha no último instante visto e outra começa, então a suspensão não conta como tempo jogado. Ao iniciar o app, sessões abertas por uma queda são fechadas no último batimento; elas não são retomadas. O mesmo jogo não abre duas vezes. Fora do alcance: launchers que entregam a um programa já aberto (Steam) ou que chamam `setsid` escapam do rastreio e a sessão dura cerca de 0 s.
 4. **Coletores.** Rodam durante a sessão e gravam eventos na tabela `signals`. Interface comum (`Collector`) para que novos sinais sejam plugáveis.
 5. **Motor de progresso.** Consome `signals` e grava `progress_estimates`.
 6. **Estatísticas.** Tempo por jogo/plataforma/semana, ritmo de progresso, jogos abandonados, previsão de horas restantes.
@@ -94,10 +94,15 @@ frontend (React)  ──HTTP──>  backend (FastAPI)
 
 **Regra:** os sinais brutos são sempre guardados. Se o filtro mudar, o histórico inteiro pode ser reprocessado.
 
-### Limites conhecidos da fase 1
+### Limites conhecidos das fases 1 e 2
 
 - Uma subpasta desmontada dentro de uma pasta configurada saudável perde as linhas dela (voltam quando a pasta volta, com novo hash).
-- Fase 2: `sessions.game_id` não tem regra de remoção e as chaves estrangeiras estão ligadas; apagar um jogo já jogado vai falhar. Trocar por marcar arquivos como ausentes.
+- Um jogo com histórico de sessões nunca é apagado pelo scan; sem arquivos ele some da lista (sem botão Jogar), mas o tempo continua nas estatísticas.
+- Uma atualização de DAT que renomeia o título dá ao jogo um novo id; o histórico fica no nome antigo.
+- Se o app cair com o emulador aberto, o tempo depois do último batimento (até 15 s) se perde, e o que seguir rodando não é retomado.
+- Se o relógio do sistema voltar no meio de uma sessão, a contagem congela até ele alcançar o último valor (tempo se perde, nunca é inventado).
+- Vários workers do uvicorn, ou iniciar o backend uma segunda vez com um jogo aberto, não são suportados: o `close_orphans` do segundo fecha as sessões abertas do primeiro (ficam cortadas no último batimento).
+- Ainda fora do escopo: ritmo de progresso, jogos abandonados e previsão de horas restantes (dependem do motor de progresso), e jogos de PC/Steam.
 - O scan é uma requisição única e longa; em ISOs muito grandes o navegador pode desistir (o scan continua e grava o resultado).
 - Uma pasta configurada que fica vazia (último jogo apagado ou movido para outra pasta) mantém as linhas antigas, com aviso, porque não dá para distinguir de um disco desmontado. Para limpar, tire a pasta das configurações.
 - Lista de pastas de ROMs vazia é recusada: a biblioteca não pode ser zerada pela interface.

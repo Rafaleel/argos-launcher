@@ -1,12 +1,25 @@
 from urllib.parse import urlparse
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import router
+from app.db import connect
+from app.sessions.tracker import close_orphans
 
-app = FastAPI(title="Argos Launcher")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # A crash can leave sessions open; close them at their last heartbeat.
+    conn = connect()
+    close_orphans(conn)
+    conn.close()
+    yield
+
+
+app = FastAPI(title="Argos Launcher", lifespan=lifespan)
 # No CORS middleware: the UI reaches the API through the Vite proxy. Host
 # checking blocks DNS-rebinding, since the API can start programs.
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1"])
