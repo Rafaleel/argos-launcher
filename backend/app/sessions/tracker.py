@@ -49,11 +49,14 @@ def session_alive(sid: int) -> bool:
     return False
 
 
-def start_session(conn: sqlite3.Connection, game_id: int, launch_fn) -> tuple[int, int]:
-    """Launch the game and record a session. Returns (pid, session id)."""
+def start_session(conn: sqlite3.Connection, game_id: int, launch_fn, also: tuple[int, ...] = ()) -> tuple[int, int]:
+    """Launch the game and record a session. Returns (pid, session id).
+
+    `also`: other games that must not be open either (the other discs of an edition)."""
     # One lock for check + launch + insert: a double click must not open two emulators.
     with _play_lock:
-        if conn.execute("SELECT 1 FROM sessions WHERE game_id = ? AND ended_at IS NULL", (game_id,)).fetchone():
+        ids = (game_id, *also)
+        if conn.execute(f"SELECT 1 FROM sessions WHERE game_id IN ({','.join('?' * len(ids))}) AND ended_at IS NULL", ids).fetchone():
             raise AlreadyPlaying()
         # Record first: if the database is busy we fail before an emulator exists,
         # instead of leaving an untracked emulator that can be opened again.

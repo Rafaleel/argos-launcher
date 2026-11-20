@@ -3,13 +3,14 @@ import os
 import sqlite3
 import threading
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import covers
+from app.collectors import presence
 from app.config import db_path
 from app.editions import edition_ids
 from app.db import connect
@@ -141,6 +142,11 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
         """SELECT s.game_id, s.payload, s.timestamp FROM signals s
            JOIN (SELECT game_id, MAX(id) AS mid FROM signals WHERE type = 'achievements' GROUP BY game_id) m ON s.id = m.mid"""
     ).fetchall()
+    places = {
+        r["game_id"]: r["payload"] for r in conn.execute(
+            """SELECT s.game_id, s.payload FROM signals s
+               JOIN (SELECT game_id, MAX(id) AS mid FROM signals WHERE type = 'presence' GROUP BY game_id) m ON s.id = m.mid""")
+    }
     achievements = {}
     for r in latest:
         try:
@@ -162,6 +168,7 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
                 "seconds_played": time.get(r["id"], {}).get("seconds", 0),
                 "ra_id": ra_ids.get(r["id"]),
                 "achievements": achievements.get(r["id"]),
+                "presence": _presence(places.get(r["id"])),
                 "dolphin": bool(r["emu_exe"]) and dolphin.detect(r["emu_exe"], json.loads(r["emu_args"])) is not None,
             }
         )
@@ -179,6 +186,17 @@ def game_cover(game_id: int, conn: sqlite3.Connection = Conn) -> FileResponse:
     if path is None:
         raise HTTPException(404, "Sem capa")
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
+
+
+def _presence(payload: str | None) -> dict | None:
+    """The last rich presence line of a game, for "where you stopped"."""
+    try:
+        p = json.loads(payload) if payload else None
+    except ValueError:
+        return None  # a broken old signal must not take the library down
+    if not isinstance(p, dict) or not isinstance(p.get("message"), str):
+        return None
+    return {"message": p["message"], "at": p.get("at")}
 
 
 @router.get("/platforms")
@@ -240,7 +258,8 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
                 written = dolphin.apply_game_settings(install, game_code, settings, store.get_written(conn, game_id))
                 store.set_written(conn, game_id, written)
             args, env = dolphin.launch_plan(install, args, settings)
-            if others and (playlist := _disc_playlist(conn, [game_id, *others])):
+            at = discs.index(game_id)  # Dolphin swaps to the *next* entry: chosen disc, then the following ones
+            if others and (playlist := _disc_playlist(conn, discs[at:] + discs[:at])):
                 # Dolphin boots the first entry and swaps to the next one when the game asks for it
                 paths = [playlist]
                 args = [*args, "-C", "Dolphin.Core.AutoDiscChange=True"]
@@ -250,7 +269,7 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
             raise HTTPException(500, f"Não foi possível gravar a configuração do Dolphin: {exc}") from exc
     try:
         pid, session_id = start_session(
-            conn, game_id, lambda: launch(emu["executable"], args, paths, env)
+            conn, game_id, lambda: launch(emu["executable"], args, paths, env), tuple(others)
         )
     except AlreadyPlaying:
         raise HTTPException(409, "Este jogo já está aberto") from None
@@ -260,22 +279,26 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
         raise HTTPException(503, "Banco de dados ocupado; tente de novo") from None
     except LaunchError as exc:
         raise HTTPException(500, str(exc)) from exc
+    started = conn.execute("SELECT started_at FROM sessions WHERE id = ?", (session_id,)).fetchone()["started_at"]
+    presence.start(conn, game_id, session_id, datetime.fromisoformat(started.replace("Z", "+00:00")))
     return {"pid": pid, "session_id": session_id}
 
 
 def _disc_playlist(conn: sqlite3.Connection, game_ids: list[int]) -> str | None:
-    """An .m3u with one existing disc per game, the chosen one first. None if fewer than two are there."""
+    """An .m3u with one existing disc per game, in the given order (the chosen one first).
+
+    None unless the chosen disc and at least one other are there: the clicked disc must boot."""
     files = []
     for gid in game_ids:
         rows = conn.execute("SELECT path FROM files WHERE game_id = ? ORDER BY path", (gid,)).fetchall()
         path = next((r["path"] for r in rows if os.path.isfile(r["path"])), None)
         if path and "\n" not in path and "\r" not in path:  # one path per line
-            files.append(path)
-    if len(files) < 2:
+            files.append((gid, path))
+    if len(files) < 2 or files[0][0] != game_ids[0]:
         return None
     target = db_path().parent / "playlists" / f"{game_ids[0]}.m3u"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("\n".join(files) + "\n", encoding="utf-8")
+    target.write_text("".join(f"{path}\n" for _, path in files), encoding="utf-8")
     return str(target)
 
 

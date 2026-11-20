@@ -9,6 +9,7 @@ export type Game = {
   dolphin: boolean;
   ra_id: number | null;
   achievements: AchievementSummary | null;
+  presence: { message: string; at: string | null } | null; // last RetroAchievements rich presence line
 };
 export type AchievementSummary = {
   title: string;
