@@ -71,3 +71,24 @@ def test_weeks_start_on_monday_and_months_group_days(conn, tz):
     days = play_time.per_period(conn, "day", 3, today=date(2026, 5, 12))
     assert [d["period"] for d in days] == ["2026-05-10", "2026-05-11", "2026-05-12"]
     assert [d["seconds"] for d in days] == [3600, 1800, 0]
+
+
+def test_journal_pages_whole_local_days_and_uses_recorded_session_time(conn, tz):
+    tz("America/Sao_Paulo")
+    a = add_game(conn, "A")
+    b = add_game(conn, "B")
+    add_session(conn, a, "2026-05-12T02:00:00Z", "2026-05-12T03:05:00Z")  # starts on May 11
+    add_session(conn, a, "2026-05-11T14:00:00Z", "2026-05-11T14:05:00Z")
+    add_session(conn, b, "2026-05-10T20:00:00Z", "2026-05-10T20:00:03Z")
+    conn.execute(
+        "INSERT INTO sessions(game_id, started_at, last_heartbeat) VALUES (?, ?, ?)",
+        (b, "2026-05-11T16:00:00Z", "2026-05-11T16:01:00Z"),
+    )
+    page = play_time.journal(conn, days=1)
+    assert page["next_before"] == "2026-05-11"
+    day, = page["days"]
+    assert day["day"] == "2026-05-11"
+    assert [(r["game_id"], r["sessions"], r["seconds"]) for r in day["games"]] == [(a, 2, 4200), (b, 1, 60)]
+    older = play_time.journal(conn, date.fromisoformat(page["next_before"]), days=1)
+    assert older["next_before"] is None
+    assert [d["day"] for d in older["days"]] == ["2026-05-10"]

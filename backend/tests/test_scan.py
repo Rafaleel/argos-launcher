@@ -135,13 +135,13 @@ def test_non_utf8_file_name_is_skipped_not_fatal(conn, tmp_path):
     assert [g["title"] for g in games(conn)] == ["ok"] and result["errors"]
 
 
-def test_zip_and_chd_are_listed_as_unidentified(conn, tmp_path):
+def test_chd_and_rvz_are_listed_as_unidentified_but_zip_is_not(conn, tmp_path):
     roms = tmp_path / "roms"
     roms.mkdir()
     for n in ("g.zip", "g.chd", "g.rvz"):
         (roms / n).write_bytes(b"data")
     scan(conn, [str(roms)], [])
-    assert len(games(conn)) == 3 and all(g["identified"] == 0 for g in games(conn))
+    assert len(games(conn)) == 2 and all(g["identified"] == 0 for g in games(conn))
 
 
 def test_edited_cue_joins_its_identified_tracks(conn, tmp_path):
@@ -243,3 +243,22 @@ def test_unreadable_file_keeps_its_row(conn, tmp_path):
     finally:
         a.chmod(0o644)
     assert {g["title"] for g in games(conn)} == {"a", "b"} and result["errors"]
+
+
+def test_archives_next_to_games_are_not_games(conn, tmp_path):
+    roms, dats = setup_nes(tmp_path)
+    for name in ("RE2_SHDP_2.0.zip", "pack.7z", "ResidentEvil.rar"):
+        (tmp_path / "roms" / name).write_bytes(b"PK\x03\x04 texture pack")
+    scan(conn, [roms], [dats])
+    assert [g["title"] for g in games(conn)] == ["Mario (USA)"]
+
+
+def test_an_archive_listed_by_an_older_version_leaves_on_rescan(conn, tmp_path):
+    roms, dats = setup_nes(tmp_path)
+    pack = tmp_path / "roms" / "pack.zip"
+    pack.write_bytes(b"PK\x03\x04")
+    conn.execute("INSERT INTO files (path, size, mtime_ns, crc32, sha1) VALUES (?, 4, 0, '0', '0')", (str(pack),))
+    conn.commit()
+    scan(conn, [roms], [dats])
+    assert conn.execute("SELECT COUNT(*) FROM files WHERE path = ?", (str(pack),)).fetchone()[0] == 0
+    assert [g["title"] for g in games(conn)] == ["Mario (USA)"]

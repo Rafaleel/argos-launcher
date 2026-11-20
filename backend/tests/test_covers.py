@@ -10,7 +10,7 @@ from app import covers
 from app.main import app
 from tests.test_dolphin_api import GC, prepare
 
-IMG = covers.PNG + b"fake image body"
+IMG = covers.PNG + b"fake image body" + covers.PNG_END
 
 
 class Thumbs:
@@ -88,7 +88,7 @@ def test_offline_or_server_error_is_not_remembered(thumbs):
     assert covers.get(GC, "X") is not None
 
 
-@pytest.mark.parametrize("body", [b"<html>not an image</html>", covers.PNG + b"x" * (6 * 1024 * 1024)])
+@pytest.mark.parametrize("body", [b"<html>not an image</html>", covers.PNG + b"x" * (6 * 1024 * 1024) + covers.PNG_END])
 def test_non_png_or_huge_answers_are_not_saved(thumbs, body):
     thumbs.files[path(GC, "Bad")] = body
     assert covers.get(GC, "Bad") is None
@@ -102,3 +102,10 @@ def test_api_serves_the_cover_of_an_identified_game(thumbs, tmp_path):
     r = client.get(f"/api/games/{gid}/cover")
     assert r.status_code == 200 and r.content == IMG and r.headers["content-type"] == "image/png"
     assert client.get("/api/games/999/cover").status_code == 404
+
+
+def test_a_cut_download_is_not_cached(thumbs):
+    thumbs.files[path(GC, "Cut")] = covers.PNG + b"half of it"  # no IEND: the connection dropped
+    assert covers.get(GC, "Cut") is None
+    thumbs.files[path(GC, "Cut")] = IMG
+    assert covers.get(GC, "Cut").read_bytes() == IMG

@@ -130,3 +130,11 @@ def test_api_rejected_login_is_502_without_the_password(client, site):
 def test_validation_error_does_not_echo_the_password(client):
     r = client.post("/api/dolphin/achievements/login", json={"user": "", "password": PASSWORD})
     assert r.status_code == 422 and PASSWORD not in r.text
+
+
+def test_a_401_login_says_user_or_password(site, monkeypatch):
+    def refuse(*a, **k):
+        raise RAError("O RetroAchievements recusou o usuário ou a chave de API. Confira os dois em Configurações.")
+    monkeypatch.setattr(ra, "get_json", refuse)
+    with pytest.raises(RAError, match="senha"):
+        ra.login_token("rafael", PASSWORD)

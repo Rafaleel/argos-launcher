@@ -3,6 +3,7 @@ import os
 import sqlite3
 import threading
 from collections.abc import Iterator
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -165,6 +166,8 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
     return result
 
 
+# shortcut: a cold cover can hold a worker for up to ~30 s on a slow network; fine for a local
+# library, revisit (background prefetch after scan) if big libraries stall the API.
 @router.get("/games/{game_id}/cover")
 def game_cover(game_id: int, conn: sqlite3.Connection = Conn) -> FileResponse:
     game = conn.execute("SELECT title, platform FROM games WHERE id = ?", (game_id,)).fetchone()
@@ -256,6 +259,11 @@ def stats_games(conn: sqlite3.Connection = Conn) -> list[dict]:
         for gid, v in play_time.per_game(conn).items()
     ]
     return sorted(rows, key=lambda r: -r["seconds"])
+
+
+@router.get("/stats/journal")
+def stats_journal(before: date | None = None, conn: sqlite3.Connection = Conn) -> dict:
+    return play_time.journal(conn, before)
 
 
 @router.get("/stats/platforms")

@@ -180,5 +180,8 @@ def ra_login(body: RaLogin, conn: sqlite3.Connection = Conn) -> dict:
 def ra_logout(conn: sqlite3.Connection = Conn) -> dict:
     install = _need_install(conn)
     _not_running()
-    dolphin.write_ra_login(install, "", None)
+    try:
+        dolphin.write_ra_login(install, "", None)
+    except OSError as exc:
+        raise HTTPException(500, f"Não foi possível gravar no Dolphin: {exc}") from exc
     return dolphin.ra_status(install)
