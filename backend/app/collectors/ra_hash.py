@@ -47,6 +47,8 @@ def gamecube_hash(path: str) -> str | None:
             total = 0
             segments = []
             for i in range(18):  # 7 code segments, then 11 data segments
+                # Deliberately NOT dol + offset: rcheevos seeks to the raw value (real discs store it relative
+                # to the dol, so it lands in the header area), and the hash must equal the one RA computed.
                 offset, length = _u32(table, i * 4), _u32(table, 0x90 + i * 4)
                 if length == 0:
                     continue

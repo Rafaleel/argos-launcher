@@ -24,7 +24,7 @@ from tests.test_dolphin_api import GC
 
 HEADER = 0x2440 + 0x20 + 0x100 + 0x40  # apploader body 0x100, trailer 0x40
 DOL = 0x4000
-SEGMENTS = [(0x6000, 0x300), (0x7000, 0x80)]  # (offset, length) of two non-empty segments
+SEGMENTS = [(0x6000, 0x300), (0x7000, 0x80)]  # (offset, length) of two non-empty segments; the offsets are absolute, as rcheevos reads them (not dol + offset)
 
 
 def gc_image(*, magic=True, segments=SEGMENTS, size=0x8000, dol=DOL, fill=7) -> bytes:
