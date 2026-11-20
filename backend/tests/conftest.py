@@ -65,3 +65,12 @@ def clean_dolphin_state(monkeypatch):
     for t in dolphin.MONITORS:
         t.join(timeout=30)
     dolphin.MONITORS.clear()
+
+
+@pytest.fixture(autouse=True)
+def no_installed_emulators(monkeypatch):
+    """A scan auto-configures installed emulators: tests must not see the machine's Flatpaks or PATH."""
+    from app.emulators import detect
+
+    detect.flatpak_apps.cache_clear()
+    monkeypatch.setattr(detect, "candidates", lambda: [])
