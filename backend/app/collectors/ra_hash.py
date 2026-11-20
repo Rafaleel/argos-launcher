@@ -6,6 +6,8 @@ This was written from that source; the reference program was not run here. The R
 real check: a wrong hash is simply not recognised.
 """
 import hashlib
+import os
+import stat
 import struct
 from collections.abc import Callable
 
@@ -23,7 +25,12 @@ def _u32(buf: bytes, at: int) -> int:
 def gamecube_hash(path: str) -> str | None:
     """MD5 as RetroAchievements computes it for a raw GameCube disc image, or None if it is not one."""
     try:
-        with open(path, "rb") as f:
+        # O_NONBLOCK so that a FIFO swapped in for the image cannot hang the request; only regular files are hashed
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            os.close(fd)
+            return None
+        with open(fd, "rb") as f:
             f.seek(0, 2)
             size = f.tell()
             f.seek(0x1C)
