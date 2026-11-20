@@ -11,15 +11,18 @@ type Tab = "achievements" | "video" | "textures";
 
 export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx & { id: number }) {
   const game = games.find(g => g.id === id);
+  // discs of one edition share a RetroAchievements set: show whichever disc was synced
+  const editionSummary = (collectEditions(games).find(group => group.some(d => d.id === id)) ?? [])
+    .map(d => d.achievements).find(a => a) ?? null;
   const [history, setHistory] = useState<GameTime[] | null>(null);
-  const [summary, setSummary] = useState<AchievementSummary | null>(game?.achievements ?? null);
+  const [summary, setSummary] = useState<AchievementSummary | null>(editionSummary);
   const [tab, setTab] = useState<Tab | null>(null);
   useEffect(() => {
     let active = true;
     api.statsGames().then(rows => { if (active) setHistory(rows); }).catch(() => undefined);
     return () => { active = false; };
   }, [id, game?.seconds_played]);
-  useEffect(() => { setSummary(game?.achievements ?? null); }, [game?.achievements]);
+  useEffect(() => { setSummary(editionSummary); }, [editionSummary]);
 
   if (!game) {
     return loaded ? <p className="muted">Jogo não encontrado. <a href="#/">Voltar ao acervo</a></p> : null;

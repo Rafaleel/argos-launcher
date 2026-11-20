@@ -184,7 +184,8 @@ export function Library({ games, play }: Ctx) {
             const title = splitTitle(multi ? editionTitle(game.title) : game.title);
             const seconds = discs.reduce((sum, d) => sum + d.seconds_played, 0);
             const href = `#/game/${game.id}`;
-            const achievements = game.achievements;
+            // the discs of an edition share one RetroAchievements set: any synced disc speaks for all
+            const achievements = discs.find(d => d.achievements)?.achievements ?? null;
             return (
               <article className="sleeve" data-selected={discs === selected} key={discs[0].id}>
                 <button className="sleeve-link" data-browse data-edition={discs[0].id} aria-pressed={discs === selected}
@@ -195,8 +196,12 @@ export function Library({ games, play }: Ctx) {
                     <span className="eyebrow">{platformName(game.platform)}</span>
                     <strong className="sleeve-title">{title.name}</strong>
                     <span className="sleeve-meta">{game.playing ? "Jogando agora" : seconds ? formatDuration(seconds) + " de jogo" : "Nunca jogado"}</span>
-                    {multi && <span className="disc-count"><Disc3 />{discs.length} discos</span>}
-                    {view === "list" && !multi && achievements && <span className="sleeve-meta">{achievements.earned}/{achievements.total} conquistas</span>}
+                    {view === "list" ? (achievements || multi) && (
+                      <span className="sleeve-meta list-extra">
+                        {achievements && `${achievements.earned}/${achievements.total} conquistas`}
+                        {multi && <span className="disc-count"><Disc3 />{discs.length} discos</span>}
+                      </span>
+                    ) : multi && <span className="disc-count"><Disc3 />{discs.length} discos</span>}
                   </span>
                 </button>
                 {game.identified && game.has_emulator && !game.playing && !multi
