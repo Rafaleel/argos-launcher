@@ -5,8 +5,10 @@ import threading
 from collections.abc import Iterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from app import covers
 from app.db import connect
 from app.collectors.retroachievements import summary as ra_summary
 from app.emulators import detect, dolphin, store
@@ -161,6 +163,17 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
             }
         )
     return result
+
+
+@router.get("/games/{game_id}/cover")
+def game_cover(game_id: int, conn: sqlite3.Connection = Conn) -> FileResponse:
+    game = conn.execute("SELECT title, platform FROM games WHERE id = ?", (game_id,)).fetchone()
+    if game is None or game["platform"] is None:
+        raise HTTPException(404, "Sem capa")
+    path = covers.get(game["platform"], game["title"])
+    if path is None:
+        raise HTTPException(404, "Sem capa")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
 
 
 @router.get("/platforms")
