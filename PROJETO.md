@@ -107,6 +107,26 @@ frontend (React)  ──HTTP──>  backend (FastAPI)
 - Uma pasta configurada que fica vazia (último jogo apagado ou movido para outra pasta) mantém as linhas antigas, com aviso, porque não dá para distinguir de um disco desmontado. Para limpar, tire a pasta das configurações.
 - Lista de pastas de ROMs vazia é recusada: a biblioteca não pode ser zerada pela interface.
 
+## Perfis do Dolphin (fora das fases numeradas)
+
+O Argos configura o Dolphin sem abrir a interface dele. Vale só para emuladores cadastrados que apontam para o Dolphin (`flatpak run org.DolphinEmu.dolphin-emu` ou um executável `dolphin-emu`).
+
+- **Vídeo:** backend (Vulkan/OpenGL), placa de vídeo (padrão do sistema ou NVIDIA), resolução interna, anisotropia, VSync, texturas HD e pré-carregamento. Há um padrão para todos os jogos e um ajuste por jogo; o do jogo vence. "Padrão" não mexe no valor que o Dolphin já tem.
+- **Como é aplicado** (verificado no Dolphin 2609b): as opções `-C GFX.*` da linha de comando são **ignoradas**, então o Argos grava `GameSettings/<ID>.ini` antes de abrir o jogo (`-v` escolhe o backend). A placa NVIDIA vem de variáveis de PRIME, passadas como `--env=` do Flatpak (antes do id do app) ou no ambiente do processo. Provado pelo `nvidia-smi` e pelo log do Dolphin, em OpenGL e em Vulkan.
+- **Pacotes de texturas:** o Argos valida a lista do arquivo (toda entrada precisa estar na pasta `<ID>/` ou `<3 letras>/` do jogo; recusa `..`, caminhos absolutos e links simbólicos), confere espaço em disco, extrai numa pasta temporária e troca. Usa o `7z`, pois o `unzip` não abre a compressão dos pacotes SHDP. O ID vem dos 6 primeiros bytes da ISO.
+- **Controles (jogador 1):** teclado e mouse (padrão do Dolphin), teclado WASD e controle de Xbox (perfil "SDL Gamepad" que acompanha o Dolphin). O `GCPadNew.ini` anterior fica em `GCPadNew.ini.argos-bak` (a primeira cópia nunca é sobrescrita).
+- **Limites:**
+  - O mapeamento do mouse (C-Stick pelo mouse) não existe: não consegui verificar os nomes de entrada do mouse no Dolphin.
+  - O nome do controle de Xbox vem do kernel e pode diferir do nome SDL que o Dolphin usa; se o controle não responder, use o nome exato mostrado nos Controles do Dolphin. Não testei com um controle de verdade.
+  - Resolução, anisotropia e VSync seguem os nomes das chaves do Dolphin, mas só as texturas e a placa foram provadas no seu Dolphin.
+  - Mudar controles ou texturas exige o Dolphin fechado.
+  - "Padrão" desfaz só o que o Argos gravou (ele lembra as chaves por jogo, a partir do primeiro jogo aberto com esta versão); chaves que você mesmo pôs no `.ini` do jogo não são apagadas.
+  - Sem ID do jogo (RVZ, WBFS, GCZ e CISO não trazem o ID no começo do arquivo), resolução, anisotropia, VSync e texturas não são aplicados; backend e placa de vídeo continuam valendo. A tela avisa.
+  - Escolher a placa de vídeo com Flatpak exige cadastrar o emulador como `flatpak` com `run <id>`; o script exportado (`.../exports/bin/org.DolphinEmu.dolphin-emu`) não repassa o ambiente, e o Argos recusa a combinação com uma mensagem.
+  - **OpenGL tem um bug de teclado no Dolphin 2609b** (issue 13354 do Dolphin; correção mesclada em 14/11/2026, ainda fora do Flatpak): depois que a janela do jogo perde o foco uma vez, ela deixa de receber eventos de foco e de teclado. Medido no Flatpak instalado: a janela do jogo em OpenGL não tem as máscaras `FocusChange` e `KeyPress`; em Vulkan tem. Use Vulkan; a tela avisa quando o backend não é Vulkan. O "Background Input" é um contorno documentado, mas faz o jogo reagir a teclas de outros programas.
+  - A lista de placas vem do `lspci` (lido uma vez e guardado: pode levar uns 2 s e acordar a placa dedicada na primeira consulta).
+  - Só o Dolphin tem adaptador; a estrutura permite acrescentar o RetroArch depois.
+
 ## 5. Ordem de construção
 
 | Fase | Entrega | Critério de pronto |

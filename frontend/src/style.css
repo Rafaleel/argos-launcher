@@ -15,3 +15,8 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #8884; }
 .bar-row { display: grid; grid-template-columns: minmax(9rem, 20rem) 1fr 6rem; gap: 8px; align-items: center; padding: 2px 0; }
 .bar-row span:last-child { text-align: right; }
 .badge { font-size: 0.8rem; padding: 1px 8px; border-radius: 10px; background: #2a9d4a33; margin-left: 8px; }
+.grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 4px 12px; }
+.card { border: 1px solid #8884; border-radius: 6px; padding: 8px 14px 12px; margin: 8px 0; }
+.card h3 { margin: 4px 0 0; }
+.row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.row > .grow { flex: 1; min-width: 12rem; }
