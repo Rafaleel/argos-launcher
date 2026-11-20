@@ -55,14 +55,23 @@ function PlatformRow({ platform, current, options, onSaved, notify }: {
 const PRESETS: Record<string, { label: string; icon: typeof Keyboard }> = {
   keyboard_default: { label: "Teclado · layout do Dolphin", icon: Keyboard },
   keyboard_wasd: { label: "Teclado · WASD", icon: Keyboard },
-  xbox: { label: "Controle de Xbox", icon: Gamepad2 },
+  xbox: { label: "Controle (Xbox, PlayStation e outros)", icon: Gamepad2 },
 };
 
 function DolphinSection({ info, notify, refresh }: { info: DolphinInfo; notify: Notify; refresh: () => void }) {
   const [defaults, setDefaults] = useState<VideoSettings>({});
-  const [preset, setPreset] = useState("keyboard_default");
-  const [device, setDevice] = useState(info.controllers[0]?.device ?? "");
+  const [preset, setPreset] = useState(info.pad_device?.startsWith("SDL/") || info.controllers.length ? "xbox" : "keyboard_default");
+  const [device, setDevice] = useState(info.pad_device?.startsWith("SDL/") ? info.pad_device : info.controllers[0]?.device ?? "");
+  const [touched, setTouched] = useState(false); // once the user picks, detection stops choosing for them
   useEffect(() => { api.dolphinDefaults().then(setDefaults).catch((e) => notify(e.message, true)); }, []);
+  // look for pads every few seconds, so turning one on is enough (no reload)
+  useEffect(() => { const id = setInterval(refresh, 3000); return () => clearInterval(id); }, [refresh]);
+  const found = info.controllers.map((c) => c.device).join("|");
+  useEffect(() => {
+    if (touched || !info.controllers.length) return;
+    setPreset("xbox");
+    if (!info.controllers.some((c) => c.device === device)) setDevice(info.controllers[0].device);
+  }, [found]);
 
   const save = () => api.saveDolphinDefaults(defaults).then((v) => { setDefaults(v); notify("Padrões do Dolphin salvos."); })
     .catch((e) => notify(e.message, true));
@@ -89,15 +98,24 @@ function DolphinSection({ info, notify, refresh }: { info: DolphinInfo; notify: 
           {info.presets.map((p) => {
             const meta = PRESETS[p] ?? { label: p, icon: Gamepad2 };
             const Icon = meta.icon;
-            return <button key={p} aria-pressed={preset === p} onClick={() => setPreset(p)}><Icon /> {meta.label}</button>;
+            return <button key={p} aria-pressed={preset === p} onClick={() => { setTouched(true); setPreset(p); }}><Icon /> {meta.label}</button>;
           })}
         </div>
         {preset === "xbox" && (
           <div style={{ marginTop: 16, maxWidth: 480 }}>
-            <Field label="Controle" hint={info.controllers.length === 0 ? "Nenhum controle conectado agora. Conecte e recarregue." : "O nome vem do sistema; se não responder no jogo, use o nome exato que o Dolphin mostra."}>
-              <input list="controllers" value={device} onChange={(e) => setDevice(e.target.value)} placeholder="SDL/0/Xbox Wireless Controller" />
-            </Field>
-            <datalist id="controllers">{info.controllers.map((c) => <option key={c.device} value={c.device}>{c.name}</option>)}</datalist>
+            {info.controllers.length > 0 ? (
+              <Field label="Controle detectado" hint={info.controllers.some((c) => c.source === "kernel")
+                ? "Sem a biblioteca SDL3 o nome é um palpite; se não responder no jogo, use o nome que o Dolphin mostra." : undefined}>
+                <select value={device} onChange={(e) => { setTouched(true); setDevice(e.target.value); }}>
+                  {!info.controllers.some((c) => c.device === device) && device && <option value={device}>{device}</option>}
+                  {info.controllers.map((c) => <option key={c.device} value={c.device}>{c.name}{c.device.startsWith("SDL/0/") ? "" : ` (${c.device.split("/")[1]})`}</option>)}
+                </select>
+              </Field>
+            ) : (
+              <Field label="Controle" hint="Nenhum controle conectado. Ligue ou conecte o controle: ele aparece aqui sozinho.">
+                <input value={device} onChange={(e) => { setTouched(true); setDevice(e.target.value); }} placeholder="SDL/0/Xbox Series X Controller" />
+              </Field>
+            )}
           </div>
         )}
         <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>O arquivo anterior fica salvo como GCPadNew.ini.argos-bak.</p>

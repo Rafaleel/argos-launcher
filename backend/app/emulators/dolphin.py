@@ -5,6 +5,8 @@ Facts verified on a real Dolphin 2609b (Flatpak) with a hybrid Intel + NVIDIA la
 - `-v` selects the backend; the PRIME environment variables select the NVIDIA GPU
   for both OpenGL and Vulkan (checked with nvidia-smi and Dolphin's own log).
 """
+import ctypes
+import ctypes.util
 import functools
 import os
 import re
@@ -252,18 +254,74 @@ def nvidia_flatpak_ready() -> bool | None:
     return "org.freedesktop.Platform.GL.nvidia" in out
 
 
+SDL_INIT_GAMEPAD = 0x2000
+_sdl_lock = threading.Lock()
+
+
+def sdl_gamepads() -> list[str] | None:
+    """Gamepad names as SDL3 gives them, which is how Dolphin's SDL backend names devices.
+
+    None when SDL3 is not installed. The host's SDL may differ from the copy inside Dolphin,
+    but names come from the same controller database, so they match for common pads."""
+    try:
+        sdl = ctypes.CDLL(ctypes.util.find_library("SDL3") or "libSDL3.so.0")
+    except OSError:
+        return None
+    sdl.SDL_Init.argtypes, sdl.SDL_Init.restype = [ctypes.c_uint32], ctypes.c_bool
+    sdl.SDL_GetGamepads.argtypes, sdl.SDL_GetGamepads.restype = [ctypes.POINTER(ctypes.c_int)], ctypes.POINTER(ctypes.c_uint32)
+    sdl.SDL_GetGamepadNameForID.argtypes, sdl.SDL_GetGamepadNameForID.restype = [ctypes.c_uint32], ctypes.c_char_p
+    sdl.SDL_QuitSubSystem.argtypes = [ctypes.c_uint32]
+    with _sdl_lock:  # SDL init is reference counted per process; keep one enumeration at a time
+        if not sdl.SDL_Init(SDL_INIT_GAMEPAD):
+            return None
+        try:
+            count = ctypes.c_int(0)
+            ids = sdl.SDL_GetGamepads(ctypes.byref(count))
+            if not ids:
+                return []
+            names = [(sdl.SDL_GetGamepadNameForID(ids[k]) or b"").decode("utf-8", "replace").strip() for k in range(count.value)]
+            sdl.SDL_free(ids)
+            return [n for n in names if n]
+        finally:
+            sdl.SDL_QuitSubSystem(SDL_INIT_GAMEPAD)
+
+
+def _kernel_gamepads(text: str) -> list[str]:
+    """Names of input devices with gamepad or joystick buttons (BTN_GAMEPAD 0x130, BTN_JOYSTICK 0x120)."""
+    names = []
+    for block in text.split("\n\n"):
+        name = re.search(r'^N: Name="(.*)"$', block, re.M)
+        keys = re.search(r"^B: KEY=([0-9a-f ]+)$", block, re.M)
+        if not name or not keys:
+            continue
+        words = keys.group(1).split()[::-1]  # the kernel prints the highest word first
+        bits = sum(int(w, 16) << (64 * k) for k, w in enumerate(words))
+        if bits >> 0x130 & 1 or bits >> 0x120 & 1:
+            names.append(name.group(1))
+    return names
+
+
+def _devices(names: list[str], source: str) -> list[dict]:
+    """Dolphin numbers devices with the same name from 0: two identical pads are SDL/0/X and SDL/1/X."""
+    seen: dict[str, int] = {}
+    out = []
+    for n in names:
+        out.append({"name": n, "device": f"SDL/{seen.get(n, 0)}/{n}", "source": source})
+        seen[n] = seen.get(n, 0) + 1
+    return out
+
+
 def controller_candidates() -> list[dict]:
-    """Gamepads the kernel sees. The name is a hint: Dolphin's SDL name can differ."""
+    """Gamepads plugged in now, best guess of Dolphin's device string first."""
+    names = sdl_gamepads()
+    if names is not None:
+        return _devices(names, "sdl")
     try:
         text = Path("/proc/bus/input/devices").read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
-    found = []
-    for block in text.split("\n\n"):
-        name = re.search(r'^N: Name="(.*)"$', block, re.M)
-        if name and re.search(r"Handlers=.*\bjs\d+\b", block):
-            found.append({"name": name.group(1), "device": f"SDL/{len(found)}/{name.group(1)}"})
-    return found
+    # shortcut: without SDL3 the kernel name is only a hint; SDL often names the pad differently
+    return _devices(_kernel_gamepads(text), "kernel")
 
 
 # ---------------------------------------------------------------- texture packs
