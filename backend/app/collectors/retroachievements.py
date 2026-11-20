@@ -169,6 +169,23 @@ def resolve_game_id(md5: str) -> int | None:
     return game or None  # 0 means "unknown hash"
 
 
+def login_token(user: str, password: str) -> tuple[str, str]:
+    """Log in the way emulators do (rcheevos `login2`) and return (user name, token). The password is not kept."""
+    try:
+        data = get_json(DOREQUEST, data=urllib.parse.urlencode({"r": "login2", "u": user, "p": password}).encode())
+    except RAError as exc:
+        raise RAError(str(exc).replace(password, "•••")) from None
+    if not isinstance(data, dict) or data.get("Success") is not True:
+        err = data.get("Error") if isinstance(data, dict) else None
+        msg = str(err)[:160].replace(password, "•••") if err else "o RetroAchievements recusou o login"
+        raise RAError(f"Login recusado: {msg}")
+    name, token = data.get("User"), data.get("Token")
+    if not (isinstance(name, str) and isinstance(token, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", name)
+            and re.fullmatch(r"[A-Za-z0-9]{8,128}", token)):
+        raise RAError("Resposta inesperada do RetroAchievements ao fazer login.")
+    return name, token
+
+
 class RetroAchievementsCollector:
     name = "retroachievements"
 
