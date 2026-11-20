@@ -54,9 +54,15 @@ def accept(p: dict, ra_id: int, since: datetime) -> str | None:
     return p["message"]
 
 
-def _open(conn: sqlite3.Connection, session_id: int) -> bool:
-    row = conn.execute("SELECT ended_at FROM sessions WHERE id = ?", (session_id,)).fetchone()
-    return row is not None and row["ended_at"] is None
+def _ended(conn: sqlite3.Connection, session_id: int) -> datetime | None | bool:
+    """When the session ended; None while it is open; True if it is gone. A busy database reads as open."""
+    try:
+        row = conn.execute("SELECT ended_at FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return True
+    return datetime.fromisoformat(row["ended_at"].replace("Z", "+00:00")) if row["ended_at"] else None
 
 
 def _poll(db_file: Path, game_id: int, session_id: int, user: str, key: str, ra_id: int, since: datetime) -> None:
@@ -64,19 +70,25 @@ def _poll(db_file: Path, game_id: int, session_id: int, user: str, key: str, ra_
     last = None
     try:
         while True:
-            still_open = _open(conn, session_id)
+            ended = _ended(conn, session_id)
+            if ended is True:
+                break
             time.sleep(INTERVAL)  # the first line arrives a while after the game boots
             try:
                 p = fetch(user, key)
             except RAError:
                 p = None  # offline or refused: try again next round
             msg = accept(p, ra_id, since) if p else None
-            if msg and msg != last:
-                store_signal(conn, game_id, "presence", {"ra_id": ra_id, "message": msg, "at": p["at"].strftime("%Y-%m-%dT%H:%M:%SZ")}, session_id)
-                last = msg
+            # after the end, only a line sent before it: a newer one belongs to the next session
+            if msg and msg != last and (ended is None or p["at"] <= ended):
+                try:
+                    store_signal(conn, game_id, "presence", {"ra_id": ra_id, "message": msg, "at": p["at"].strftime("%Y-%m-%dT%H:%M:%SZ")}, session_id)
+                    last = msg
+                except sqlite3.Error:
+                    pass  # busy database: the same line is offered again next round
             # shortcut: a session split by a suspend ends this poller; the next play starts a new one
-            if not still_open:
-                break  # one more read after the end catches the last line
+            if ended is not None:
+                break  # that was the one read after the end, for the last line
     finally:
         conn.close()
 

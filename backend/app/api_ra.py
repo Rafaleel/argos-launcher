@@ -114,7 +114,9 @@ def sync_all(conn: sqlite3.Connection = Conn) -> list[dict]:
                 continue  # another disc of this edition was synced already
             if done and PAUSE:
                 time.sleep(PAUSE)
-            done.update(edition_ids(conn, row["id"]))
+            ra_id = ra_store.get_ra_id(conn, row["id"])
+            # only discs linked to the same set get this answer; a disc linked elsewhere still syncs
+            done.update(d for d in edition_ids(conn, row["id"]) if ra_store.get_ra_id(conn, d) == ra_id)
             try:
                 s = _sync(conn, row["id"])
                 results.append({"game_id": row["id"], "title": row["title"], "ok": True, "message": f"{s['earned']} de {s['total']}"})

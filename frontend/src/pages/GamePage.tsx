@@ -13,7 +13,8 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
   const game = games.find(g => g.id === id);
   // discs of one edition share a RetroAchievements set: show whichever disc was synced
   const editionSummary = (collectEditions(games).find(group => group.some(d => d.id === id)) ?? [])
-    .map(d => d.achievements).find(a => a) ?? null;
+    .map(d => d.achievements).filter(a => a !== null)
+    .sort((a, b) => (b!.synced_at ?? "").localeCompare(a!.synced_at ?? ""))[0] ?? null; // newest sync
   const [history, setHistory] = useState<GameTime[] | null>(null);
   const [summary, setSummary] = useState<AchievementSummary | null>(editionSummary);
   // where the player stopped: the newest rich presence line of any disc of the edition

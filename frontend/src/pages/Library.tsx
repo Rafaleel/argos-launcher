@@ -185,7 +185,8 @@ export function Library({ games, play }: Ctx) {
             const seconds = discs.reduce((sum, d) => sum + d.seconds_played, 0);
             const href = `#/game/${game.id}`;
             // the discs of an edition share one RetroAchievements set: any synced disc speaks for all
-            const achievements = discs.find(d => d.achievements)?.achievements ?? null;
+            const achievements = discs.map(d => d.achievements).filter(a => a !== null)
+              .sort((a, b) => (b!.synced_at ?? "").localeCompare(a!.synced_at ?? ""))[0] ?? null;
             return (
               <article className="sleeve" data-selected={discs === selected} key={discs[0].id}>
                 <button className="sleeve-link" data-browse data-edition={discs[0].id} aria-pressed={discs === selected}
