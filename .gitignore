@@ -10,3 +10,6 @@ frontend/dist/
 
 # Game images and texture packs: large and copyrighted, never commit
 ISOs/
+
+# Editor/agent tooling
+.serena/

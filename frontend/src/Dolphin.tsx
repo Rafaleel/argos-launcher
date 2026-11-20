@@ -82,13 +82,13 @@ export function VideoForm({ value, onChange, isDefault = false }: { value: Video
     </div>
     <p className="muted">
       Renderizar na janela principal: contorno que apareceu em relatos do mesmo bug; a janela do jogo é a principal do Dolphin e
-      começa pequena. Entrada em segundo plano: o Dolphin deixa de exigir foco, mas o jogo pode reagir a teclas de outros
+      começa pequena. Não funciona com o argumento -b (o Argos recusa abrir assim). Entrada em segundo plano: o Dolphin deixa de exigir foco, mas o jogo pode reagir a teclas de outros
       programas. Manter no topo: citado como contorno, sem garantia.
     </p>
     {openGl && (
       <p className="muted">
         Atenção: no Dolphin 2609b o OpenGL tem um bug conhecido (issue 13354): depois que a janela do jogo perde o foco
-        uma vez, o teclado pode parar de responder. Prefira Vulkan.
+        uma vez, o teclado pode parar de responder. Trocar para Vulkan não basta: o mesmo sintoma já apareceu com Vulkan.
       </p>
     )}
     </>

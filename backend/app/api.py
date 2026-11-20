@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.db import connect
+from app.collectors.retroachievements import summary as ra_summary
 from app.emulators import dolphin, store
 from app.launcher.launch import FilesMissing, LaunchError, launch, validate_executable
 from app.scanner.scan import scan
@@ -97,6 +98,20 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
            ORDER BY g.platform IS NULL, g.platform, g.title"""
     ).fetchall()
     time = play_time.per_game(conn)
+    ra_ids = {r["game_id"]: r["ra_id"] for r in conn.execute("SELECT game_id, ra_id FROM ra_games")}
+    latest = conn.execute(
+        """SELECT s.game_id, s.payload, s.timestamp FROM signals s
+           JOIN (SELECT game_id, MAX(id) AS mid FROM signals WHERE type = 'achievements' GROUP BY game_id) m ON s.id = m.mid"""
+    ).fetchall()
+    achievements = {}
+    for r in latest:
+        try:
+            payload = json.loads(r["payload"])
+            # only a sync of the game that is linked now (a changed or removed link hides the old result)
+            if isinstance(payload, dict) and ra_ids.get(r["game_id"]) is not None and payload.get("ra_id") == ra_ids[r["game_id"]]:
+                achievements[r["game_id"]] = ra_summary({**payload, "synced_at": r["timestamp"]})
+        except ValueError:
+            pass  # a broken old signal must not take the library down
     result = []
     for r in rows:
         game = {k: v for k, v in dict(r).items() if k not in ("emu_exe", "emu_args")}
@@ -107,6 +122,8 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
                 "has_emulator": bool(r["has_emulator"]),
                 "playing": bool(r["playing"]),
                 "seconds_played": time.get(r["id"], {}).get("seconds", 0),
+                "ra_id": ra_ids.get(r["id"]),
+                "achievements": achievements.get(r["id"]),
                 "dolphin": bool(r["emu_exe"]) and dolphin.detect(r["emu_exe"], json.loads(r["emu_args"])) is not None,
             }
         )
