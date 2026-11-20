@@ -73,3 +73,21 @@ def no_installed_emulators(monkeypatch):
     from app.emulators import detect
 
     monkeypatch.setattr(detect, "candidates", lambda: [])
+
+
+@pytest.fixture(autouse=True)
+def no_presence_network(monkeypatch):
+    """Rich presence polls start with every play of a linked game: never reach the real site."""
+    from app.collectors import presence
+    from app.collectors.retroachievements import RAError
+
+    def offline(user, key):
+        raise RAError("offline in tests")
+
+    monkeypatch.setattr(presence, "fetch", offline)
+    monkeypatch.setattr(presence, "INTERVAL", 0.02)
+    yield
+    for t in presence.POLLERS:
+        t.join(timeout=10)
+    assert not any(t.is_alive() for t in presence.POLLERS), "a presence poller is still running"
+    presence.POLLERS.clear()
