@@ -407,6 +407,45 @@ def remove_pack(install: Install, game_id: str) -> bool:
     return removed
 
 
+# ---------------------------------------------------------------- RetroAchievements login
+
+RA_SECTION = "Achievements"
+
+
+def ra_status(install: Install) -> dict:
+    """Is Dolphin logged in to RetroAchievements? Never returns the token itself."""
+    values: dict[str, str] = {}
+    try:
+        text = _read_text(install.config_dir / "RetroAchievements.ini")
+    except OSError:
+        text = ""
+    inside = False
+    for line in text.splitlines():
+        if line.strip().startswith("["):
+            inside = line.strip().lower() == f"[{RA_SECTION}]".lower()
+        elif inside and "=" in line:
+            k, v = line.split("=", 1)
+            values[k.strip().lower()] = v.strip()
+    user = values.get("username", "").encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+    return {
+        "enabled": values.get("enabled", "").lower() == "true",
+        "user": user,
+        "logged_in": bool(values.get("apitoken")) and bool(user),
+        "hardcore": values.get("hardcoreenabled", "").lower() == "true",
+    }
+
+
+def write_ra_login(install: Install, user: str, token: str | None) -> None:
+    """Store the login Dolphin uses (user + token); None logs out. Only call with Dolphin closed."""
+    path = install.config_dir / "RetroAchievements.ini"
+    if token is None:
+        set_ini_values(path, {(RA_SECTION, "Enabled"): "False"}, frozenset({(RA_SECTION, "ApiToken")}))
+        return
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", user) or not re.fullmatch(r"[A-Za-z0-9]{8,128}", token):
+        raise ValueError("usuário ou token inválido")
+    set_ini_values(path, {(RA_SECTION, "Enabled"): "True", (RA_SECTION, "Username"): user, (RA_SECTION, "ApiToken"): token})
+
+
 # ---------------------------------------------------------------- GameCube pad 1
 
 KB_DEVICE = "XInput2/0/Virtual core pointer"
