@@ -191,6 +191,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .catalog-list .shelf-ticket span { display: none; }
 .catalog-list .sleeve-copy { display: grid; grid-template-columns: minmax(120px,2.2fr) 1fr 1fr 1fr; align-items: center; padding: 0; }
 .catalog-list .sleeve-title { order: -1; font-size: 17px; }
+.list-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .catalog-list .sleeve-action { bottom: calc(50% - 15px); }
 .plate { display: flex; flex-direction: column; justify-content: end; height: 100%; padding: 9%; color: #fff1cc; background: repeating-linear-gradient(128deg, #3b2221 0 9px, #432725 9px 10px); overflow: hidden; }
 .plate b { font: 700 15px/1.15 var(--display); overflow-wrap: anywhere; }
