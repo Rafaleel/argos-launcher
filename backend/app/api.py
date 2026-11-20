@@ -258,7 +258,8 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
                 written = dolphin.apply_game_settings(install, game_code, settings, store.get_written(conn, game_id))
                 store.set_written(conn, game_id, written)
             args, env = dolphin.launch_plan(install, args, settings)
-            if others and (playlist := _disc_playlist(conn, [game_id, *others])):
+            at = discs.index(game_id)  # Dolphin swaps to the *next* entry: chosen disc, then the following ones
+            if others and (playlist := _disc_playlist(conn, discs[at:] + discs[:at])):
                 # Dolphin boots the first entry and swaps to the next one when the game asks for it
                 paths = [playlist]
                 args = [*args, "-C", "Dolphin.Core.AutoDiscChange=True"]
@@ -268,7 +269,7 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
             raise HTTPException(500, f"Não foi possível gravar a configuração do Dolphin: {exc}") from exc
     try:
         pid, session_id = start_session(
-            conn, game_id, lambda: launch(emu["executable"], args, paths, env)
+            conn, game_id, lambda: launch(emu["executable"], args, paths, env), tuple(others)
         )
     except AlreadyPlaying:
         raise HTTPException(409, "Este jogo já está aberto") from None
@@ -284,18 +285,20 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
 
 
 def _disc_playlist(conn: sqlite3.Connection, game_ids: list[int]) -> str | None:
-    """An .m3u with one existing disc per game, the chosen one first. None if fewer than two are there."""
+    """An .m3u with one existing disc per game, in the given order (the chosen one first).
+
+    None unless the chosen disc and at least one other are there: the clicked disc must boot."""
     files = []
     for gid in game_ids:
         rows = conn.execute("SELECT path FROM files WHERE game_id = ? ORDER BY path", (gid,)).fetchall()
         path = next((r["path"] for r in rows if os.path.isfile(r["path"])), None)
         if path and "\n" not in path and "\r" not in path:  # one path per line
-            files.append(path)
-    if len(files) < 2:
+            files.append((gid, path))
+    if len(files) < 2 or files[0][0] != game_ids[0]:
         return None
     target = db_path().parent / "playlists" / f"{game_ids[0]}.m3u"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("\n".join(files) + "\n", encoding="utf-8")
+    target.write_text("".join(f"{path}\n" for _, path in files), encoding="utf-8")
     return str(target)
 
 

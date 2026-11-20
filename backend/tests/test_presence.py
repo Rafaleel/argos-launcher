@@ -124,3 +124,48 @@ def test_library_shows_the_last_place(tmp_path):
     conn.commit()
     game = next(g for g in client.get("/api/games").json() if g["id"] == gid)
     assert game["presence"] == {"message": "Leon A | Police Station", "at": "2026-11-20T04:10:00Z"}
+
+
+def _session(conn, ended=None):
+    conn.execute("INSERT OR IGNORE INTO games (id, key, title, platform, identified) VALUES (1, 'k', 'RE2', 'Nintendo - GameCube', 1)")
+    sid = conn.execute("INSERT INTO sessions (game_id, started_at, last_heartbeat, ended_at) VALUES (1, '2026-11-20T04:00:00Z', '2026-11-20T04:00:00Z', ?)",
+                       (ended,)).lastrowid
+    conn.commit()
+    return sid
+
+
+def test_the_read_after_the_end_ignores_lines_of_the_next_session(monkeypatch):
+    conn = connect()
+    sid = _session(conn, ended="2026-11-20T04:30:00Z")
+    later = datetime(2026, 11, 20, 4, 31, tzinfo=timezone.utc)  # sent after this session ended
+    monkeypatch.setattr(presence, "fetch", lambda u, k: {"game": 3176, "message": "Next session", "at": later})
+    presence._poll(presence.db_path(), 1, sid, "u", KEY, 3176, T0)
+    assert conn.execute("SELECT COUNT(*) FROM signals WHERE type = 'presence'").fetchone()[0] == 0
+
+
+def test_a_busy_database_does_not_kill_the_poller(monkeypatch):
+    import sqlite3
+    conn = connect()
+    sid = _session(conn)
+    at = datetime(2026, 11, 20, 4, 10, tzinfo=timezone.utc)
+    rounds = {"n": 0}
+
+    def fetch(u, k):
+        rounds["n"] += 1
+        if rounds["n"] == 3:
+            conn.execute("UPDATE sessions SET ended_at = '2026-11-20T04:30:00Z' WHERE id = ?", (sid,)); conn.commit()
+        return {"game": 3176, "message": "Hall", "at": at}
+
+    real_store = presence.store_signal
+    fails = {"n": 1}
+
+    def flaky(*a, **k):
+        if fails["n"]:
+            fails["n"] -= 1
+            raise sqlite3.OperationalError("database is locked")
+        return real_store(*a, **k)
+
+    monkeypatch.setattr(presence, "fetch", fetch)
+    monkeypatch.setattr(presence, "store_signal", flaky)
+    presence._poll(presence.db_path(), 1, sid, "u", KEY, 3176, T0)
+    assert conn.execute("SELECT COUNT(*) FROM signals WHERE type = 'presence'").fetchone()[0] == 1  # retried, stored once
