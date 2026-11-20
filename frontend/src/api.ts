@@ -22,6 +22,8 @@ export type RaSettings = { user: string; has_key: boolean };
 export type RaSyncResult = { game_id: number; title: string; ok: boolean; message: string };
 export type PlatformTime = { platform: string | null; seconds: number };
 export type GameTime = { game_id: number; title: string; platform: string | null; seconds: number; sessions: number; last_played: string | null };
+export type JournalDay = { day: string; games: GameTime[] };
+export type JournalPage = { days: JournalDay[]; next_before: string | null };
 export type Period = { period: string; seconds: number };
 export type By = "day" | "week" | "month";
 
@@ -111,6 +113,7 @@ export const api = {
   platforms: () => call<string[]>("/platforms"),
   emulators: () => call<Emulator[]>("/emulators"),
   saveEmulator: (e: Emulator) => call<Emulator>("/emulators", "PUT", e),
+  journal: (before: string | null) => call<JournalPage>(before ? `/stats/journal?before=${encodeURIComponent(before)}` : "/stats/journal"),
   statsGames: () => call<GameTime[]>("/stats/games"),
   statsPlatforms: () => call<PlatformTime[]>("/stats/platforms"),
   statsPeriods: (by: By) => call<Period[]>(`/stats/periods?by=${by}`),

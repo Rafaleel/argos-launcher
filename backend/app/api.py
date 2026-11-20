@@ -3,6 +3,7 @@ import os
 import sqlite3
 import threading
 from collections.abc import Iterator
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -258,6 +259,11 @@ def stats_games(conn: sqlite3.Connection = Conn) -> list[dict]:
         for gid, v in play_time.per_game(conn).items()
     ]
     return sorted(rows, key=lambda r: -r["seconds"])
+
+
+@router.get("/stats/journal")
+def stats_journal(before: date | None = None, conn: sqlite3.Connection = Conn) -> dict:
+    return play_time.journal(conn, before)
 
 
 @router.get("/stats/platforms")

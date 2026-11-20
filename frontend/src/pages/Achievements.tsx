@@ -44,9 +44,6 @@ export function Achievements({ games, info, notify, refresh }: Ctx) {
 
   return (
     <>
-      <div className="page-head">
-        <div><h1>Conquistas</h1><p>RetroAchievements: o emulador desbloqueia, o Argos acompanha.</p></div>
-      </div>
       <div className="kpis">
         <div className="kpi"><span className="eyebrow">Jogos vinculados</span><b>{linked}</b></div>
         <div className="kpi"><span className="eyebrow">Conquistas ganhas</span><b>{earned}</b></div>
@@ -55,7 +52,7 @@ export function Achievements({ games, info, notify, refresh }: Ctx) {
         </div>
       </div>
 
-      <div className="stack">
+      <div className="account-layout">
         <Panel title="Sua conta" sub="Usuário do site e a chave de API (em retroachievements.org → Configurações). A chave fica só no seu computador.">
           <div className="form-grid">
             <Field label="Usuário"><input value={user} onChange={(e) => setUser(e.target.value)} autoComplete="username" /></Field>

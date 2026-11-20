@@ -61,12 +61,12 @@ export function Settings({ notify, refresh }: Ctx) {
   return (
     <>
       <div className="page-head">
-        <div><h1>Configurações</h1><p>Onde o Argos procura seus jogos.</p></div>
+        <h2>Fontes do acervo</h2>
         <button className="btn" onClick={() => scan(s)} disabled={scanning || s.rom_dirs.length === 0}>
           <RefreshCw /> {scanning ? "Escaneando…" : "Escanear de novo"}
         </button>
       </div>
-      <div className="stack">
+      <div className="sources-layout">
         <Panel title="Pastas de jogos" sub="Imagens de disco (ISO, GCM, bin/cue) e ROMs. Subpastas também são lidas.">
           <FolderList busy={scanning} label="Adicionar pasta de jogos" title="Escolha uma pasta de jogos" folders={s.rom_dirs}
             onChange={(rom_dirs) => scan({ ...s, rom_dirs })} />

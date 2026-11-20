@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, By, formatDuration, Game, GameTime, Period, PlatformTime } from "../api";
+import { collectEditions, editionTitle } from "../collection";
+import { Journal } from "./Journal";
 import { Panel, platformName, splitTitle } from "../ui";
 
 function Bars({ rows }: { rows: { id: string; label: string; seconds: number; href?: string }[] }) {
@@ -32,24 +34,35 @@ export function Stats({ games }: { games: Game[] }) {
   useEffect(() => { api.statsPlatforms().then(setPlatforms).catch(() => undefined); api.statsGames().then(setTop).catch(() => undefined); }, [games]);
   useEffect(() => { api.statsPeriods(by).then(setPeriods).catch(() => undefined); }, [by, games]);
 
+  const availableIds = new Set(games.map(g => g.id));
+  const titles = collectEditions(top.map(row => ({
+    ...row, id: row.game_id, identified: row.platform !== null,
+  }))).map(group => {
+    const first = group[0];
+    const available = group.find(row => availableIds.has(row.id));
+    return {
+      id: first.id,
+      name: splitTitle(editionTitle(first.title)).name,
+      seconds: group.reduce((sum, row) => sum + row.seconds, 0),
+      href: available ? `#/game/${available.id}` : undefined,
+    };
+  }).sort((a, b) => b.seconds - a.seconds);
   const total = top.reduce((a, g) => a + g.seconds, 0);
   const sessions = top.reduce((a, g) => a + g.sessions, 0);
   const maxPeriod = Math.max(1, ...periods.map((p) => p.seconds));
 
   return (
     <>
-      <div className="page-head"><div><h1>Estatísticas</h1><p>Quanto você jogou, onde e quando.</p></div></div>
-      {top.length === 0 ? (
-        <div className="empty"><h2>Nada registrado ainda</h2><p>Abra um jogo pelo Argos e o tempo começa a contar sozinho.</p></div>
-      ) : (
+      <Journal games={games} />
+      {top.length > 0 && (
         <>
           <div className="kpis">
             <div className="kpi"><span className="eyebrow">Tempo total</span><b>{formatDuration(total)}</b></div>
-            <div className="kpi"><span className="eyebrow">Jogos jogados</span><b>{top.length}</b></div>
+            <div className="kpi"><span className="eyebrow">Jogos jogados</span><b>{titles.length}</b></div>
             <div className="kpi"><span className="eyebrow">Sessões</span><b>{sessions}</b></div>
-            <div className="kpi"><span className="eyebrow">Mais jogado</span><b style={{ fontSize: 18, lineHeight: 1.3 }}>{splitTitle(top[0].title).name}</b></div>
+            <div className="kpi"><span className="eyebrow">Mais jogado</span><b style={{ fontSize: 18, lineHeight: 1.3 }}>{titles[0].name}</b></div>
           </div>
-          <div className="stack">
+          <div className="stats-layout">
             <Panel title="Ao longo do tempo" action={
               <div className="seg" role="group" aria-label="Agrupar por">
                 {(["day", "week", "month"] as By[]).map((b) => (
@@ -60,14 +73,14 @@ export function Stats({ games }: { games: Game[] }) {
               <div className="columns">
                 {periods.map((p) => (
                   <div className="col" key={p.period} title={`${p.period}: ${formatDuration(p.seconds)}`}>
-                    <div style={{ height: `${(p.seconds / maxPeriod) * 100}%` }} />
+                    <div hidden={p.seconds === 0} style={{ height: `${(p.seconds / maxPeriod) * 100}%` }} />
                     <span>{periodLabel(p.period, by)}</span>
                   </div>
                 ))}
               </div>
             </Panel>
             <Panel title="Por jogo">
-              <Bars rows={top.slice(0, 10).map((g) => ({ id: String(g.game_id), label: splitTitle(g.title).name, seconds: g.seconds, href: `#/game/${g.game_id}` }))} />
+              <Bars rows={titles.slice(0, 10).map(g => ({ id: String(g.id), label: g.name, seconds: g.seconds, href: g.href }))} />
             </Panel>
             <Panel title="Por plataforma">
               <Bars rows={platforms.map((p) => ({ id: p.platform ?? "-", label: platformName(p.platform), seconds: p.seconds }))} />

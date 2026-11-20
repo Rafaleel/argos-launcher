@@ -26,15 +26,15 @@ export function splitTitle(title: string): { name: string; tags: string } {
   return { name: disc ? `${m[1]} · Disco ${disc[1]}` : m[1], tags: m[2].replace(/\(Disc \d+\)/i, "").trim() };
 }
 
-export function Cover({ game }: { game: Game }) {
+export function Cover({ game }: { game: Pick<Game, "id" | "identified" | "title" | "platform"> }) {
   const [failed, setFailed] = useState(false);
   const { name } = splitTitle(game.title);
   if (failed || !game.identified) {
     return (
-      <div className="plate" aria-hidden="true">
+      <span className="plate" aria-hidden="true">
         <b>{name}</b>
         <i>{platformName(game.platform)}</i>
-      </div>
+      </span>
     );
   }
   return <img src={coverUrl(game.id)} alt="" loading="lazy" onError={() => setFailed(true)} />;

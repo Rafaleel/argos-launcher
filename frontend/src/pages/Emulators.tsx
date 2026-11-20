@@ -118,9 +118,6 @@ export function Emulators({ games, info, notify, refresh }: Ctx) {
 
   return (
     <>
-      <div className="page-head">
-        <div><h1>Emuladores</h1><p>O Argos encontra os emuladores instalados e escolhe o melhor para cada plataforma.</p></div>
-      </div>
       <Panel title="Plataformas da biblioteca">
         {platforms.length === 0 ? <p className="muted">As plataformas aparecem depois que a biblioteca tiver jogos identificados.</p> : (
           platforms.map((p) => (

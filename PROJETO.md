@@ -63,7 +63,11 @@ O sistema usa os sinais **que estiverem disponíveis** para cada jogo; nenhum é
 
 ### Interface
 
-Navegação lateral (Biblioteca, Estatísticas, Conquistas, Emuladores, Configurações). A biblioteca alterna entre grade de capas e lista; cada jogo tem uma página com capa, tempo, sessões, conquistas e as abas de vídeo e texturas do Dolphin. Arquivos não identificados (como pacotes de textura na pasta de jogos) ficam fora da estante, num filtro próprio. No app desktop as pastas e os pacotes são escolhidos pelo seletor nativo; no navegador, digitando o caminho.
+O Acervo destaca a última sessão disponível. Clique numa capa ou use as setas para folhear os títulos visíveis em grade ou lista. O destaque acompanha a seleção e apresenta cada mídia como caixa e disco, cartucho, caixa portátil ou capa simples. O tema escuro usa superfícies foscas e vermelho profundo. O claro usa marfim e retícula vermelha. A escolha fica salva localmente.
+
+Discos da mesma edição e plataforma aparecem juntos na estante. A ficha permite escolher o disco, ver o tempo dele e jogá-lo. O indicador de conquistas aparece após sincronização. Controles de vínculo, vídeo e texturas abrem sob demanda. Arquivos não identificados têm filtro próprio.
+
+Atividade abre com o diário, que registra cada sessão na data local em que começou. O diário agrupa as sessões de cada título no mesmo dia, incluindo os vários discos da edição, e permite folhear dias anteriores. Os gráficos abaixo continuam dividindo o tempo à meia-noite. Oficina reúne emuladores, controles e pastas. No desktop, pastas e pacotes usam o seletor nativo. No navegador, o usuário informa o caminho.
 
 ### Capas
 

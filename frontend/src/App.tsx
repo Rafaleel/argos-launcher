@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { BarChart3, Cpu, Library as LibraryIcon, Settings as SettingsIcon, Trophy, X } from "lucide-react";
+import { Activity, Archive, Moon, Sun, Wrench, X } from "lucide-react";
 import { api, DolphinInfo, Game } from "./api";
 import { Notify, splitTitle } from "./ui";
 import { Library } from "./pages/Library";
@@ -28,22 +28,10 @@ function useRoute(): Route {
   return route;
 }
 
-/** The eye of Argos, drawn small. */
-function Mark() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
-      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
 const NAV = [
-  { page: "library", label: "Biblioteca", icon: LibraryIcon, href: "#/" },
-  { page: "stats", label: "Estatísticas", icon: BarChart3, href: "#/stats" },
-  { page: "achievements", label: "Conquistas", icon: Trophy, href: "#/achievements" },
-  { page: "emulators", label: "Emuladores", icon: Cpu, href: "#/emulators" },
-  { page: "settings", label: "Configurações", icon: SettingsIcon, href: "#/settings" },
+  { name: "Acervo", href: "#/", icon: Archive },
+  { name: "Atividade", href: "#/stats", icon: Activity },
+  { name: "Oficina", href: "#/emulators", icon: Wrench },
 ] as const;
 
 export type Ctx = {
@@ -57,6 +45,13 @@ export type Ctx = {
 
 export default function App() {
   const route = useRoute();
+  const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
+  const toggleTheme = () => {
+    const next = light ? "dark" : "light";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("argos.theme", next); } catch { /* session only */ }
+    setLight(!light);
+  };
   const [games, setGames] = useState<Game[] | null>(null);
   const [info, setInfo] = useState<DolphinInfo | null>(null);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
@@ -105,28 +100,40 @@ export default function App() {
     api.play(g.id).then(() => { notify(`Abrindo ${splitTitle(g.title).name}…`); return refresh(); }).catch((e) => notify(e.message, true));
 
   const ctx: Ctx = { games: games ?? [], loaded: games !== null, info, notify, refresh, play };
-  const current = route.page === "game" ? "library" : route.page;
+  const activity = route.page === "stats" || route.page === "achievements";
+  const workshop = route.page === "emulators" || route.page === "settings";
+  const current = activity ? "Atividade" : workshop ? "Oficina" : "Acervo";
+  const sections = activity
+    ? [["stats", "Diário e estatísticas"], ["achievements", "Conquistas"]]
+    : [["emulators", "Emuladores"], ["settings", "Pastas e arquivos"]];
 
   return (
     <div className="shell">
-      <aside className="side">
-        <div className="brand"><Mark /> Argos</div>
-        <nav aria-label="Principal">
-          {NAV.map(({ page, label, icon: Icon, href }) => (
-            <a key={page} className="nav" href={href} aria-current={current === page ? "page" : undefined}>
-              <Icon /> {label}
-            </a>
-          ))}
-        </nav>
-        {playing && (
-          <a className="side-foot" href={`#/game/${playing.id}`} style={{ color: "inherit", textDecoration: "none" }}>
-            <div className="eyebrow"><span className="pulse" />Jogando agora</div>
-            <div className="title">{splitTitle(playing.title).name}</div>
-          </a>
-        )}
-      </aside>
-
+      <header className="masthead">
+        <div className="mast-inner">
+          <a className="wordmark" href="#/" aria-label="Argos · Acervo"><img src="/mark.svg" alt="" />Argos</a>
+          <nav className="main-nav" aria-label="Principal">
+            {NAV.map(({ name, href, icon: Icon }) => (
+              <a key={name} href={href} aria-current={current === name ? "page" : undefined}><Icon />{name}</a>
+            ))}
+          </nav>
+          <div className="mast-tools">
+            {playing && <a className="live-link" href={`#/game/${playing.id}`} title={splitTitle(playing.title).name}><span className="pulse" />Jogando agora</a>}
+            <button className="theme-switch" onClick={toggleTheme} aria-label={light ? "Ativar tema escuro" : "Ativar tema claro"} title={light ? "Ativar tema escuro" : "Ativar tema claro"}>
+              {light ? <Moon /> : <Sun />}
+            </button>
+          </div>
+        </div>
+      </header>
       <main className="page">
+        {(activity || workshop) && (
+          <div className="section-mast">
+            <h1>{current}</h1>
+            <nav aria-label={current}>{sections.map(([page, label]) => (
+              <a key={page} href={`#/${page}`} aria-current={route.page === page ? "page" : undefined}>{label}</a>
+            ))}</nav>
+          </div>
+        )}
         {games === null && <p className="muted">Conectando…</p>}
         {games !== null && route.page === "library" && <Library {...ctx} />}
         {route.page === "game" && route.id !== undefined && <GamePage key={route.id} id={route.id} {...ctx} />}
