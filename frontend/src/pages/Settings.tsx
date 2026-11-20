@@ -75,7 +75,7 @@ export function Settings({ notify, refresh }: Ctx) {
           <FolderList busy={scanning} label="Adicionar pasta de DATs" title="Escolha a pasta com os DATs" folders={s.dat_dirs}
             onChange={(dat_dirs) => scan({ ...s, dat_dirs })} />
         </Panel>
-        <p className="muted" style={{ fontSize: 13 }}>Arquivos compactados (zip, 7z), CHD e RVZ entram na biblioteca, mas ainda não são identificados.</p>
+        <p className="muted" style={{ fontSize: 13 }}>Arquivos compactados (zip, 7z, rar), como pacotes de textura, são ignorados. Imagens CHD e RVZ entram na biblioteca, mas ainda não são identificados.</p>
       </div>
     </>
   );

@@ -9,8 +9,10 @@ EXTENSIONS = {
     ".nes", ".fds", ".sfc", ".smc", ".gb", ".gbc", ".gba", ".nds", ".n64", ".z64", ".v64",
     ".md", ".gen", ".smd", ".sms", ".gg", ".pce", ".a26", ".a78", ".lnx",
     ".iso", ".cue", ".bin", ".img", ".gcm",
-    # Not identifiable in phase 1 (hash differs from the DAT), but listed as unidentified.
-    ".zip", ".7z", ".chd", ".rvz",
+    # Disc formats the DATs cannot match yet (compressed images), listed as unidentified.
+    ".chd", ".rvz",
+    # Archives (.zip, .7z, .rar) are left out on purpose: next to disc images they are texture
+    # packs and other extras, and a zipped ROM would never match the DAT hash anyway.
 }
 
 
