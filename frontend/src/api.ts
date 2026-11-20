@@ -40,7 +40,7 @@ export type VideoSettings = {
   background_input?: boolean;
   keep_on_top?: boolean;
 };
-export type Controller = { name: string; device: string };
+export type Controller = { name: string; device: string; source: "sdl" | "kernel" };
 export type DolphinInfo = {
   detected: boolean;
   flatpak: boolean | null;

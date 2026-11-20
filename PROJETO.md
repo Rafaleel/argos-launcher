@@ -149,6 +149,10 @@ O Argos configura o Dolphin sem abrir a interface dele. Vale só para emuladores
   - A lista de placas vem do `lspci` (lido uma vez e guardado: pode levar uns 2 s e acordar a placa dedicada na primeira consulta).
   - Só o Dolphin tem adaptador; a estrutura permite acrescentar o RetroArch depois.
 
+## Detecção de controles
+
+O Argos pergunta à SDL3 do sistema (via ctypes) quais gamepads estão conectados e monta o dispositivo como o Dolphin espera: `SDL/<n>/<nome da SDL>`, numerando pads de mesmo nome a partir de 0. O nome da SDL difere do nome do kernel (ex.: kernel "Xbox Wireless Controller", SDL algo como "Xbox Series X Controller"), por isso a SDL vem primeiro. A SDL dentro do Dolphin é outra cópia, mas os nomes vêm do mesmo banco de controles. Sem SDL3, o Argos lê `/proc/bus/input/devices` e reconhece gamepads pelos botões (BTN_GAMEPAD/BTN_JOYSTICK), com o nome do kernel como palpite. A tela de controles procura a cada 3 s e escolhe o controle sozinha quando ele aparece (até o usuário escolher outra coisa). O preset usa os nomes padronizados da SDL ("Button A", "Left X+"), então serve para Xbox, PlayStation e outros. Não verificado: um controle real conectado, comparando o nome com o que o Dolphin mostra.
+
 ## Detecção de emuladores
 
 - Depois de cada scan, toda plataforma da biblioteca que ainda não tem emulador recebe o melhor instalado; uma escolha feita pelo usuário nunca é trocada. `GET /api/emulators/detected` lista as opções de cada plataforma.

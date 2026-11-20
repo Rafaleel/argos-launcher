@@ -248,16 +248,33 @@ def test_gpu_names_survive_a_missing_lspci(monkeypatch):
     assert dolphin.gpu_names() == ()
 
 
-def test_controller_candidates_only_list_devices_with_a_js_handler(tmp_path, monkeypatch):
-    text = (
-        'I: Bus=0003 Vendor=045e Product=0b13\nN: Name="Xbox Wireless Controller"\nH: Handlers=event12 js0\n\n'
-        'I: Bus=0011\nN: Name="AT Translated Set 2 keyboard"\nH: Handlers=sysrq kbd event3\n\n'
-    )
+XPAD = 'I: Bus=0005 Vendor=045e Product=0b13\nN: Name="Xbox Wireless Controller"\nH: Handlers=event12\nB: KEY=7cdb000000000000 0 0 0 0\n'
+KEYBOARD = 'I: Bus=0011\nN: Name="AT Translated Set 2 keyboard"\nH: Handlers=sysrq kbd event3\nB: KEY=402000000 3803078f800d001 feffffdfffefffff fffffffffffffffe\n'
+STICK = 'I: Bus=0003\nN: Name="Old Joystick"\nH: Handlers=event9 js0\nB: KEY=ffff00000000 0 0 0 0\n'
+
+
+def test_kernel_fallback_finds_pads_by_their_buttons_not_by_js(tmp_path, monkeypatch):
     fake = tmp_path / "devices"
-    fake.write_text(text)
+    fake.write_text("\n".join([XPAD, KEYBOARD, STICK]))
     real = Path
     monkeypatch.setattr(dolphin, "Path", lambda p: fake if p == "/proc/bus/input/devices" else real(p))
-    assert dolphin.controller_candidates() == [{"name": "Xbox Wireless Controller", "device": "SDL/0/Xbox Wireless Controller"}]
+    monkeypatch.setattr(dolphin, "sdl_gamepads", lambda: None)  # no SDL3 installed
+    assert [c["name"] for c in dolphin.controller_candidates()] == ["Xbox Wireless Controller", "Old Joystick"]
+    assert dolphin.controller_candidates()[0] == {"name": "Xbox Wireless Controller", "device": "SDL/0/Xbox Wireless Controller", "source": "kernel"}
+
+
+def test_sdl_names_win_and_identical_pads_are_numbered_like_dolphin(monkeypatch):
+    monkeypatch.setattr(dolphin, "sdl_gamepads", lambda: ["Xbox Series X Controller", "PS5 Controller", "Xbox Series X Controller"])
+    assert [c["device"] for c in dolphin.controller_candidates()] == [
+        "SDL/0/Xbox Series X Controller", "SDL/0/PS5 Controller", "SDL/1/Xbox Series X Controller"]
+    assert all(c["source"] == "sdl" for c in dolphin.controller_candidates())
+
+
+def test_no_sdl_library_is_not_an_error(monkeypatch):
+    def missing(name):
+        raise OSError("libSDL3.so.0: cannot open shared object file")
+    monkeypatch.setattr(dolphin.ctypes, "CDLL", missing)
+    assert dolphin.sdl_gamepads() is None
 
 
 def test_gpu_lookup_runs_lspci_only_once(monkeypatch):
