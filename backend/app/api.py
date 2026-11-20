@@ -165,6 +165,8 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
     return result
 
 
+# shortcut: a cold cover can hold a worker for up to ~30 s on a slow network; fine for a local
+# library, revisit (background prefetch after scan) if big libraries stall the API.
 @router.get("/games/{game_id}/cover")
 def game_cover(game_id: int, conn: sqlite3.Connection = Conn) -> FileResponse:
     game = conn.execute("SELECT title, platform FROM games WHERE id = ?", (game_id,)).fetchone()

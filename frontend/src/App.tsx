@@ -73,8 +73,9 @@ export default function App() {
     (async () => {
       for (let i = 0; !stop; i++) {
         try { await refresh(); return; } catch (e) {
-          if (i >= 40) { notify(`Não consegui falar com o backend do Argos: ${e instanceof Error ? e.message : e}`, true); return; }
-          await new Promise((r) => setTimeout(r, 500));
+          // a first start may need to install dependencies: warn once, keep trying
+          if (i === 40) notify(`O backend do Argos ainda não respondeu (${e instanceof Error ? e.message : e}). Continuo tentando…`, true);
+          await new Promise((r) => setTimeout(r, i < 40 ? 500 : 2000));
         }
       }
     })();

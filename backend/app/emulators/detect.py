@@ -3,7 +3,6 @@
 Platforms are DAT header names (No-Intro/Redump). RetroArch cores say which ones they run in their
 `.info` file (`database = "Nintendo - Game Boy|..."`), using those same names.
 """
-import functools
 import os
 import re
 import shutil
@@ -34,7 +33,6 @@ def _run(cmd: list[str]) -> str:
         return ""
 
 
-@functools.lru_cache(maxsize=1)
 def flatpak_apps() -> frozenset[str]:
     return frozenset(_run(["flatpak", "list", "--app", "--columns=application"]).split())
 
@@ -88,7 +86,9 @@ def candidates() -> list[Candidate]:
                                  ("run", RETROARCH_ID, "-L", str(core), "{rom}")))
     if native := shutil.which("retroarch"):
         cfg = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "retroarch"
-        for core, platforms in retroarch_cores(cfg / "cores", [Path("/usr/share/libretro/info"), Path("/usr/lib/libretro")]):
+        info = [Path("/usr/share/libretro/info"), Path("/usr/lib/libretro")]
+        cores = retroarch_cores(cfg / "cores", info) + retroarch_cores(Path("/usr/lib/libretro"), info)  # user's, then the distro's
+        for core, platforms in cores:
             out.append(Candidate(f"RetroArch · {core.stem.removesuffix('_libretro')}", tuple(platforms), native,
                                  ("-L", str(core), "{rom}")))
     return out

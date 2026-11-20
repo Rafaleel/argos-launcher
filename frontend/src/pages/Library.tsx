@@ -53,6 +53,23 @@ export function Library({ games, loaded, play }: Ctx) {
     );
   }
 
+  if (loaded && unknown === games.length && platform !== "?") {
+    return (
+      <>
+        <div className="page-head"><div><h1>Biblioteca</h1></div></div>
+        <div className="empty">
+          <FolderPlus />
+          <h2>Nenhum jogo reconhecido ainda</h2>
+          <p>Encontrei {unknown} {unknown === 1 ? "arquivo" : "arquivos"}, mas sem os DATs do No-Intro/Redump não sei que jogos são.</p>
+          <div className="row" style={{ justifyContent: "center" }}>
+            <a className="btn primary" href="#/settings">Adicionar pasta de DATs</a>
+            <button className="btn ghost" onClick={() => setPlatform("?")}>Ver os arquivos</button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="page-head">
