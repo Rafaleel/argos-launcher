@@ -69,6 +69,10 @@ Discos da mesma edição e plataforma aparecem juntos na estante. A ficha permit
 
 Atividade abre com o diário, que registra cada sessão na data local em que começou. O diário agrupa as sessões de cada título no mesmo dia, incluindo os vários discos da edição, e permite folhear dias anteriores. Os gráficos abaixo continuam dividindo o tempo à meia-noite. Oficina reúne emuladores, controles e pastas. No desktop, pastas e pacotes usam o seletor nativo. No navegador, o usuário informa o caminho.
 
+### Jogos em vários discos
+
+Entradas do DAT que só diferem por "(Disc N)" (mesma plataforma e mesmo título) formam uma edição (`backend/app/editions.py`, igual a `frontend/src/collection.ts`). Ao jogar um disco no Dolphin, o Argos grava `playlists/<id>.m3u` ao lado do banco, com o disco escolhido primeiro e os outros depois, e liga `Core.AutoDiscChange`: quando o jogo pede o outro disco, o Dolphin troca sozinho para o próximo da lista (lido em `DVDInterface.cpp` e `Boot.cpp`). O sandbox do Flatpak lê essa pasta e as ISOs (verificado). Não verificado: a troca em si, que só acontece no fim do disco 1. Um disco faltando faz o jogo abrir só com o escolhido; outro disco da mesma edição aberto impede abrir um segundo Dolphin. O vínculo com o RetroAchievements vale para todos os discos, e uma sincronização busca o site uma vez por edição e grava o resultado em cada disco.
+
 ### Capas
 
 Vêm dos repositórios libretro-thumbnails no GitHub (`raw.githubusercontent.com/libretro-thumbnails/<plataforma>/master/Named_Boxarts/<título>.png`), que usam os mesmos nomes dos DATs; para jogos em vários discos também é tentado o nome sem "(Disc N)". Baixadas uma vez e guardadas ao lado do banco (`covers/`). Só a plataforma e o título são enviados. O endereço `thumbnails.libretro.com` devolveu 404 para todos os jogos testados, por isso não é usado.

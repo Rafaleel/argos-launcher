@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from app.api import Conn
 from app.collectors import ra_store
-from app.collectors.base import latest_signal
+from app.collectors.base import latest_signal, store_signal
+from app.editions import edition_ids
 from app.collectors.ra_hash import HASHERS
 from app.collectors.retroachievements import RAError, RetroAchievementsCollector, parse_game_ref, resolve_game_id, summary
 
@@ -67,7 +68,8 @@ def put_game_ra(game_id: int, body: GameRef, conn: sqlite3.Connection = Conn) ->
         ra_id = parse_game_ref(body.ra)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    ra_store.set_ra_id(conn, game_id, ra_id)
+    for disc in edition_ids(conn, game_id):  # the discs of an edition share one RetroAchievements set
+        ra_store.set_ra_id(conn, disc, ra_id)
     return {"ra_id": ra_id}
 
 
@@ -77,10 +79,14 @@ def _sync(conn: sqlite3.Connection, game_id: int) -> dict:
     if ra_store.get_ra_id(conn, game_id) is None:
         raise HTTPException(409, "Informe o ID do jogo no RetroAchievements primeiro")
     try:
-        RetroAchievementsCollector().collect(conn, game_id)
+        payload = RetroAchievementsCollector().collect(conn, game_id)
     except RAError as exc:
         raise HTTPException(502, str(exc)) from exc
-    return current_summary(conn, game_id, ra_store.get_ra_id(conn, game_id))
+    ra_id = ra_store.get_ra_id(conn, game_id)
+    for disc in edition_ids(conn, game_id):  # one answer covers every disc linked to the same set
+        if disc != game_id and payload and ra_store.get_ra_id(conn, disc) == ra_id:
+            store_signal(conn, disc, "achievements", payload)
+    return current_summary(conn, game_id, ra_id)
 
 
 @router.post("/games/{game_id}/ra/sync")
@@ -102,10 +108,13 @@ def sync_all(conn: sqlite3.Connection = Conn) -> list[dict]:
         raise HTTPException(409, "Já existe uma sincronização em andamento")
     try:
         rows = conn.execute("SELECT g.id, g.title FROM ra_games r JOIN games g ON g.id = r.game_id ORDER BY g.title").fetchall()
-        results = []
-        for i, row in enumerate(rows):
-            if i and PAUSE:
+        results, done = [], set()
+        for row in rows:
+            if row["id"] in done:
+                continue  # another disc of this edition was synced already
+            if done and PAUSE:
                 time.sleep(PAUSE)
+            done.update(edition_ids(conn, row["id"]))
             try:
                 s = _sync(conn, row["id"])
                 results.append({"game_id": row["id"], "title": row["title"], "ok": True, "message": f"{s['earned']} de {s['total']}"})
@@ -138,14 +147,20 @@ def _detect(conn: sqlite3.Connection, game_id: int, keep_existing: bool = False)
         raise HTTPException(502, str(exc)) from exc
     if ra_id is None:
         return {"found": False, "ra_id": None, "hash": digest}
+    discs = edition_ids(conn, game_id)  # the other discs of the edition share the set
     if keep_existing:
         # the bulk run read its list a while ago: a link saved meanwhile is the user's choice, never overwrite it
-        cur = conn.execute("INSERT INTO ra_games (game_id, ra_id) VALUES (?, ?) ON CONFLICT(game_id) DO NOTHING", (game_id, ra_id))
+        insert = "INSERT INTO ra_games (game_id, ra_id) VALUES (?, ?) ON CONFLICT(game_id) DO NOTHING"
+        cur = conn.execute(insert, (game_id, ra_id))
+        for disc in discs:
+            if disc != game_id:
+                conn.execute(insert, (disc, ra_id))
         conn.commit()
         if cur.rowcount == 0:
             return {"found": True, "ra_id": ra_id, "hash": digest, "kept": True}
     else:
-        ra_store.set_ra_id(conn, game_id, ra_id)
+        for disc in discs:
+            ra_store.set_ra_id(conn, disc, ra_id)
     return {"found": True, "ra_id": ra_id, "hash": digest}
 
 
@@ -173,12 +188,16 @@ def detect_all(conn: sqlite3.Connection = Conn) -> list[dict]:
                ORDER BY g.title""".format(",".join("?" * len(HASHERS))),
             list(HASHERS),
         ).fetchall()
-        results = []
-        for i, row in enumerate(rows):
-            if i and PAUSE:
+        results, linked = [], set()
+        for row in rows:
+            if row["id"] in linked:
+                continue  # linked together with another disc of its edition a moment ago
+            if results and PAUSE:
                 time.sleep(PAUSE)
             try:
                 r = _detect(conn, row["id"], keep_existing=True)
+                if r["found"]:
+                    linked.update(edition_ids(conn, row["id"]))
                 msg = "você vinculou este jogo enquanto eu detectava; mantive o seu vínculo" if r.get("kept") else f"jogo {r['ra_id']} no RetroAchievements" if r["found"] else "o RetroAchievements não reconheceu este disco"
                 results.append({"game_id": row["id"], "title": row["title"], "ok": r["found"], "message": msg})
             except HTTPException as exc:
