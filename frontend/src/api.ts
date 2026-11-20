@@ -77,10 +77,18 @@ export type ScanResult = {
   files_removed: number;
   games: number;
   errors: string[];
+  emulators_configured: { platform: string; name: string }[];
 };
+export type EmulatorOption = { name: string; platforms: string[]; executable: string; args: string[] };
+export type DolphinRa = { enabled: boolean; user: string; logged_in: boolean; hardcore: boolean };
+
+// The desktop app loads the UI from its own origin and calls the backend port; the browser goes through Vite's proxy.
+export const inDesktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const BASE = inDesktop ? "http://127.0.0.1:8765/api" : "/api";
+export const coverUrl = (id: number) => `${BASE}/games/${id}/cover`;
 
 async function call<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -122,5 +130,9 @@ export const api = {
   syncAllRa: () => call<RaSyncResult[]>("/ra/sync", "POST"),
   detectGameRa: (id: number) => call<{ found: boolean; ra_id: number | null; hash: string }>(`/games/${id}/ra/detect`, "POST"),
   detectAllRa: () => call<RaSyncResult[]>("/ra/detect", "POST"),
+  detectedEmulators: () => call<Record<string, EmulatorOption[]>>("/emulators/detected"),
+  dolphinRa: () => call<DolphinRa>("/dolphin/achievements"),
+  dolphinRaLogin: (user: string, password: string) => call<DolphinRa>("/dolphin/achievements/login", "POST", { user, password }),
+  dolphinRaLogout: () => call<DolphinRa>("/dolphin/achievements/login", "DELETE"),
   play: (id: number) => call<{ pid: number; session_id: number }>(`/games/${id}/play`, "POST"),
 };

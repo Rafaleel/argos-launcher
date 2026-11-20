@@ -1,201 +1,146 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
-import { api, By, DolphinInfo, Emulator, Game, GameTime, Period, PlatformTime, ScanResult, formatDuration } from "./api";
-import { DolphinPanel, GameSettings } from "./Dolphin";
-import { GameAchievements, RaPanel, achievementText } from "./RetroAchievements";
+import { useCallback, useEffect, useState } from "react";
+import { BarChart3, Cpu, Library as LibraryIcon, Settings as SettingsIcon, Trophy, X } from "lucide-react";
+import { api, DolphinInfo, Game } from "./api";
+import { Notify, splitTitle } from "./ui";
+import { Library } from "./pages/Library";
+import { GamePage } from "./pages/GamePage";
+import { Stats } from "./pages/Stats";
+import { Emulators } from "./pages/Emulators";
+import { Achievements } from "./pages/Achievements";
+import { Settings } from "./pages/Settings";
 
-const lines = (s: string) => s.split("\n");
+type Route = { page: "library" | "game" | "stats" | "emulators" | "achievements" | "settings"; id?: number };
+
+function parse(hash: string): Route {
+  const [, page, id] = hash.replace(/^#/, "").split("/");
+  if (page === "game" && Number(id)) return { page: "game", id: Number(id) };
+  if (page === "stats" || page === "emulators" || page === "achievements" || page === "settings") return { page };
+  return { page: "library" };
+}
+
+function useRoute(): Route {
+  const [route, setRoute] = useState(() => parse(location.hash));
+  useEffect(() => {
+    const on = () => { setRoute(parse(location.hash)); window.scrollTo(0, 0); };
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+  return route;
+}
+
+/** The eye of Argos, drawn small. */
+function Mark() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+const NAV = [
+  { page: "library", label: "Biblioteca", icon: LibraryIcon, href: "#/" },
+  { page: "stats", label: "Estatísticas", icon: BarChart3, href: "#/stats" },
+  { page: "achievements", label: "Conquistas", icon: Trophy, href: "#/achievements" },
+  { page: "emulators", label: "Emuladores", icon: Cpu, href: "#/emulators" },
+  { page: "settings", label: "Configurações", icon: SettingsIcon, href: "#/settings" },
+] as const;
+
+export type Ctx = {
+  games: Game[];
+  loaded: boolean;
+  info: DolphinInfo | null;
+  notify: Notify;
+  refresh: () => Promise<void>;
+  play: (g: Game) => void;
+};
 
 export default function App() {
-  const [games, setGames] = useState<Game[]>([]);
-  const [platforms, setPlatforms] = useState<string[]>([]);
-  const [emulators, setEmulators] = useState<Emulator[]>([]);
-  const [romDirs, setRomDirs] = useState("");
-  const [datDirs, setDatDirs] = useState("");
-  const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [platformTime, setPlatformTime] = useState<PlatformTime[]>([]);
-  const [gameTime, setGameTime] = useState<GameTime[]>([]);
-  const [periods, setPeriods] = useState<Period[]>([]);
-  const [by, setBy] = useState<By>("day");
+  const route = useRoute();
+  const [games, setGames] = useState<Game[] | null>(null);
   const [info, setInfo] = useState<DolphinInfo | null>(null);
-  const [openGame, setOpenGame] = useState<number | null>(null);
-  const [loaded, setLoaded] = useState(false); // never save a textarea that did not load
+  const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
 
-  const show = (text: string, error = false) => setMsg({ text, error });
-  const fail = (e: unknown) => show(e instanceof Error ? e.message : String(e), true);
-
+  const notify: Notify = useCallback((text, error = false) => setToast({ text, error }), []);
   const refresh = useCallback(async () => {
-    // Dolphin info is separate on purpose: if it fails, the library and stats must still refresh.
-    api.dolphinInfo().then(setInfo).catch(() => undefined);
-    const [g, p, e, pt, gt, per] = await Promise.all([
-      api.games(), api.platforms(), api.emulators(), api.statsPlatforms(), api.statsGames(), api.statsPeriods(by),
-    ]);
-    setGames(g);
-    setPlatforms(p);
-    setEmulators(e);
-    setPlatformTime(pt);
-    setGameTime(gt);
-    setPeriods(per);
-  }, [by]);
-
-  useEffect(() => {
-    api.settings().then((s) => {
-      setRomDirs(s.rom_dirs.join("\n"));
-      setDatDirs(s.dat_dirs.join("\n"));
-      setLoaded(true);
-    }).catch(fail);
+    api.dolphinInfo().then(setInfo).catch(() => undefined); // the library must load even if this fails
+    setGames(await api.games());
   }, []);
 
+  // The desktop app starts the backend together with the window: keep trying for a while before giving up.
   useEffect(() => {
-    refresh().catch(fail);
-  }, [refresh]);
+    let stop = false;
+    (async () => {
+      for (let i = 0; !stop; i++) {
+        try { await refresh(); return; } catch (e) {
+          if (i >= 40) { notify(`Não consegui falar com o backend do Argos: ${e instanceof Error ? e.message : e}`, true); return; }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+    })();
+    return () => { stop = true; };
+  }, [refresh, notify]);
+
+  useEffect(() => {
+    if (!toast || toast.error) return;
+    const id = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   // While a game is open, poll so "jogando agora" and the time clear by themselves.
-  const anyPlaying = games.some((g) => g.playing);
+  const playing = games?.find((g) => g.playing);
   useEffect(() => {
-    if (!anyPlaying) return;
+    if (!playing) return;
     let busy = false;
     const id = setInterval(() => {
-      if (busy) return; // a slow answer must not pile up requests
+      if (busy) return;
       busy = true;
-      refresh().catch(fail).finally(() => { busy = false; });
+      refresh().catch(() => undefined).finally(() => { busy = false; });
     }, 5000);
     return () => clearInterval(id);
-  }, [anyPlaying, refresh]);
-
-  const scan = async () => {
-    setScanning(true);
-    try {
-      await api.saveSettings({ rom_dirs: lines(romDirs), dat_dirs: lines(datDirs) });
-      const r: ScanResult = await api.scan();
-      await refresh();
-      const note = r.errors.length ? ` Avisos: ${r.errors.join("; ")}` : "";
-      show(`${r.games} jogos (${r.files_hashed} arquivos lidos, ${r.files_cached} em cache, ${r.files_removed} removidos).${note}`, r.errors.length > 0);
-    } catch (e) {
-      fail(e);
-    } finally {
-      setScanning(false);
-    }
-  };
+  }, [playing?.id, refresh]);
 
   const play = (g: Game) =>
-    api.play(g.id).then(() => { show(`Abrindo ${g.title}…`); return refresh(); }).catch(fail);
+    api.play(g.id).then(() => { notify(`Abrindo ${splitTitle(g.title).name}…`); return refresh(); }).catch((e) => notify(e.message, true));
+
+  const ctx: Ctx = { games: games ?? [], loaded: games !== null, info, notify, refresh, play };
+  const current = route.page === "game" ? "library" : route.page;
 
   return (
-    <main>
-      <h1>Argos Launcher</h1>
-      {msg && <div className={`msg ${msg.error ? "err" : ""}`}>{msg.text}</div>}
-
-      <section>
-        <h2>Biblioteca</h2>
-        <label>Pastas de ROMs (uma por linha)</label>
-        <textarea aria-label="Pastas de ROMs" rows={3} value={romDirs} onChange={(e) => setRomDirs(e.target.value)} />
-        <label>Pastas de DATs No-Intro/Redump (uma por linha)</label>
-        <textarea aria-label="Pastas de DATs" rows={2} value={datDirs} onChange={(e) => setDatDirs(e.target.value)} />
-        <p><button onClick={scan} disabled={scanning || !loaded}>{scanning ? "Escaneando…" : "Salvar e escanear"}</button></p>
-        <p className="muted">Só imagens cruas (bin/cue, iso, ROMs soltas) são identificadas. Arquivos zip, CHD e RVZ aparecem como não identificados.</p>
-      </section>
-
-      <section>
-        <h2>Jogos</h2>
-        {games.length === 0 ? <p className="muted">Nenhum jogo ainda. Escaneie uma pasta.</p> : (
-          <table>
-            <thead><tr><th>Título</th><th>Plataforma</th><th>Tempo jogado</th><th>Conquistas</th><th /></tr></thead>
-            <tbody>
-              {games.map((g) => (
-                <Fragment key={g.id}>
-                  <tr>
-                    <td>{g.title}{g.playing && <span className="badge">jogando agora</span>}</td>
-                    <td>{g.platform ?? <span className="muted">não identificado</span>}</td>
-                    <td>{formatDuration(g.seconds_played)}</td>
-                    <td>{achievementText(g.achievements)}</td>
-                    <td>
-                      {g.identified && (
-                        <button aria-expanded={openGame === g.id} onClick={() => setOpenGame(openGame === g.id ? null : g.id)}>
-                          Ajustes
-                        </button>
-                      )}{" "}
-                      <button disabled={!g.identified || !g.has_emulator || g.playing} onClick={() => play(g)}
-                        title={!g.identified ? "Jogo não identificado" : !g.has_emulator ? "Configure um emulador" : g.playing ? "Já está aberto" : ""}>
-                        Jogar
-                      </button>
-                    </td>
-                  </tr>
-                  {openGame === g.id && (
-                    <tr>
-                      <td colSpan={5}>
-                        <GameAchievements gameId={g.id} notify={show} onSynced={() => refresh().catch(fail)} />
-                        {g.dolphin && info && <GameSettings gameId={g.id} info={info} notify={show} />}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
+    <div className="shell">
+      <aside className="side">
+        <div className="brand"><Mark /> Argos</div>
+        <nav aria-label="Principal">
+          {NAV.map(({ page, label, icon: Icon, href }) => (
+            <a key={page} className="nav" href={href} aria-current={current === page ? "page" : undefined}>
+              <Icon /> {label}
+            </a>
+          ))}
+        </nav>
+        {playing && (
+          <a className="side-foot" href={`#/game/${playing.id}`} style={{ color: "inherit", textDecoration: "none" }}>
+            <div className="eyebrow"><span className="pulse" />Jogando agora</div>
+            <div className="title">{splitTitle(playing.title).name}</div>
+          </a>
         )}
-      </section>
+      </aside>
 
-      <section>
-        <h2>Estatísticas</h2>
-        {gameTime.length === 0 ? <p className="muted">Ainda não há tempo registrado. Abra um jogo para começar.</p> : (
-          <>
-            <h3>Por plataforma</h3>
-            <Bars rows={platformTime.map((p) => ({ id: p.platform ?? "-", label: p.platform ?? "Não identificado", seconds: p.seconds }))} />
-            <h3>Por jogo</h3>
-            <Bars rows={gameTime.slice(0, 10).map((g) => ({ id: String(g.game_id), label: g.title, seconds: g.seconds }))} />
-            <h3>Por período
-              <select aria-label="Agrupar por" value={by} onChange={(e) => setBy(e.target.value as By)} style={{ width: "auto", marginLeft: 8 }}>
-                <option value="day">Dia</option><option value="week">Semana</option><option value="month">Mês</option>
-              </select>
-            </h3>
-            <Bars rows={periods.map((p) => ({ id: p.period, label: p.period, seconds: p.seconds }))} />
-          </>
-        )}
-      </section>
+      <main className="page">
+        {games === null && <p className="muted">Conectando…</p>}
+        {games !== null && route.page === "library" && <Library {...ctx} />}
+        {route.page === "game" && route.id !== undefined && <GamePage key={route.id} id={route.id} {...ctx} />}
+        {route.page === "stats" && <Stats games={ctx.games} />}
+        {route.page === "achievements" && <Achievements {...ctx} />}
+        {route.page === "emulators" && <Emulators {...ctx} />}
+        {route.page === "settings" && <Settings {...ctx} />}
+      </main>
 
-      <RaPanel notify={show} onSynced={() => refresh().catch(fail)} />
-
-      {info?.detected && <DolphinPanel info={info} notify={show} refreshInfo={() => refresh().catch(fail)} />}
-
-      <section>
-        <h2>Emuladores</h2>
-        {platforms.length === 0 && <p className="muted">As plataformas aparecem depois do primeiro scan com DATs.</p>}
-        {platforms.map((p) => (
-          <EmulatorRow key={p} platform={p} current={emulators.find((e) => e.platform === p)}
-            onSave={(e) => api.saveEmulator(e).then(refresh).then(() => show(`Emulador de ${p} salvo.`)).catch(fail)} />
-        ))}
-      </section>
-    </main>
-  );
-}
-
-function EmulatorRow({ platform, current, onSave }: { platform: string; current?: Emulator; onSave: (e: Emulator) => void }) {
-  const [exe, setExe] = useState(current?.executable ?? "");
-  const [args, setArgs] = useState((current?.args ?? ["{rom}"]).join("\n"));
-  return (
-    <div>
-      <h3>{platform}</h3>
-      <label>Caminho do executável (absoluto)</label>
-      <input aria-label={`Executável do emulador de ${platform}`} value={exe} onChange={(e) => setExe(e.target.value)} placeholder="/usr/bin/retroarch" />
-      <label>Argumentos (um por linha; {"{rom}"} vira o caminho do jogo)</label>
-      <textarea aria-label={`Argumentos do emulador de ${platform}`} rows={3} value={args} onChange={(e) => setArgs(e.target.value)} />
-      <p><button onClick={() => onSave({ platform, executable: exe.trim(), args: lines(args).filter(Boolean) })}>Salvar</button></p>
-    </div>
-  );
-}
-
-function Bars({ rows }: { rows: { id: string; label: string; seconds: number }[] }) {
-  const max = Math.max(1, ...rows.map((r) => r.seconds));
-  return (
-    <div>
-      {rows.map((r) => (
-        <div className="bar-row" key={r.id}>
-          <span title={r.label} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</span>
-          <div className="bar" style={{ width: `${(r.seconds / max) * 100}%` }} />
-          <span>{formatDuration(r.seconds)}</span>
+      {toast && (
+        <div className={`toast ${toast.error ? "err" : ""}`} role={toast.error ? "alert" : "status"}>
+          <span>{toast.text}</span>
+          <button className="btn ghost icon" aria-label="Fechar aviso" onClick={() => setToast(null)}><X /></button>
         </div>
-      ))}
+      )}
     </div>
   );
 }
