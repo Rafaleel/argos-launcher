@@ -82,9 +82,10 @@ export type ScanResult = {
 export type EmulatorOption = { name: string; platforms: string[]; executable: string; args: string[] };
 export type DolphinRa = { enabled: boolean; user: string; logged_in: boolean; hardcore: boolean };
 
-// The desktop app loads the UI from its own origin and calls the backend port; the browser goes through Vite's proxy.
 export const inDesktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const BASE = inDesktop ? "http://127.0.0.1:8765/api" : "/api";
+// Served over http (the browser, or `tauri dev` loading Vite): same origin through Vite's proxy.
+// The built desktop app serves the UI from tauri://localhost and calls the backend port directly.
+const BASE = location.protocol.startsWith("http") ? "/api" : "http://127.0.0.1:8765/api";
 export const coverUrl = (id: number) => `${BASE}/games/${id}/cover`;
 
 async function call<T>(path: string, method = "GET", body?: unknown): Promise<T> {

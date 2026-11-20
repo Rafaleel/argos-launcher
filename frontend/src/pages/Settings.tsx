@@ -5,8 +5,8 @@ import { api, inDesktop, Settings as SettingsT } from "../api";
 import { pickFolder } from "../pickers";
 import { Panel } from "../ui";
 
-function FolderList({ label, folders, onChange, title }: {
-  label: string; folders: string[]; onChange: (f: string[]) => void; title: string;
+function FolderList({ label, folders, onChange, title, busy }: {
+  label: string; folders: string[]; onChange: (f: string[]) => void; title: string; busy: boolean;
 }) {
   const [typed, setTyped] = useState("");
   const add = (path: string) => { const p = path.trim(); if (p && !folders.includes(p)) onChange([...folders, p]); setTyped(""); };
@@ -16,16 +16,16 @@ function FolderList({ label, folders, onChange, title }: {
       {folders.map((f) => (
         <div className="folder" key={f}>
           <Folder /><code title={f}>{f}</code>
-          <button className="btn ghost icon" aria-label={`Remover ${f}`} onClick={() => onChange(folders.filter((x) => x !== f))}><X /></button>
+          <button className="btn ghost icon" disabled={busy} aria-label={`Remover ${f}`} onClick={() => onChange(folders.filter((x) => x !== f))}><X /></button>
         </div>
       ))}
       {inDesktop ? (
-        <div><button className="btn" onClick={async () => { const p = await pickFolder(title); if (p) add(p); }}><FolderPlus /> {label}</button></div>
+        <div><button className="btn" disabled={busy} onClick={async () => { const p = await pickFolder(title); if (p) add(p); }}><FolderPlus /> {label}</button></div>
       ) : (
         <div className="row">
           <div className="grow"><input aria-label={label} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="/caminho/absoluto"
             onKeyDown={(e) => { if (e.key === "Enter") add(typed); }} /></div>
-          <button className="btn" onClick={() => add(typed)} disabled={!typed.trim()}><FolderPlus /> Adicionar</button>
+          <button className="btn" onClick={() => add(typed)} disabled={busy || !typed.trim()}><FolderPlus /> Adicionar</button>
         </div>
       )}
     </div>
@@ -39,11 +39,13 @@ export function Settings({ notify, refresh }: Ctx) {
   if (!s) return null;
 
   const scan = async (next: SettingsT) => {
-    setS(next);
-    if (next.rom_dirs.length === 0) { await api.saveSettings(next).catch((e) => notify(e.message, true)); return; }
     setScanning(true);
     try {
-      await api.saveSettings(next);
+      setS(await api.saveSettings(next)); // only what the backend accepted stays on screen
+      if (next.rom_dirs.length === 0) {
+        notify("Sem pastas de jogos, nada foi escaneado: os jogos que já estão na biblioteca continuam lá. Adicione uma pasta para atualizar.");
+        return;
+      }
       const r = await api.scan();
       await refresh();
       const emus = r.emulators_configured.length ? ` Emulador configurado: ${r.emulators_configured.map((e) => e.name).join(", ")}.` : "";
@@ -66,11 +68,11 @@ export function Settings({ notify, refresh }: Ctx) {
       </div>
       <div className="stack">
         <Panel title="Pastas de jogos" sub="Imagens de disco (ISO, GCM, bin/cue) e ROMs. Subpastas também são lidas.">
-          <FolderList label="Adicionar pasta de jogos" title="Escolha uma pasta de jogos" folders={s.rom_dirs}
+          <FolderList busy={scanning} label="Adicionar pasta de jogos" title="Escolha uma pasta de jogos" folders={s.rom_dirs}
             onChange={(rom_dirs) => scan({ ...s, rom_dirs })} />
         </Panel>
         <Panel title="Pastas de DATs" sub="Arquivos .dat do No-Intro e do Redump. É com eles que o Argos reconhece cada jogo e sua plataforma.">
-          <FolderList label="Adicionar pasta de DATs" title="Escolha a pasta com os DATs" folders={s.dat_dirs}
+          <FolderList busy={scanning} label="Adicionar pasta de DATs" title="Escolha a pasta com os DATs" folders={s.dat_dirs}
             onChange={(dat_dirs) => scan({ ...s, dat_dirs })} />
         </Panel>
         <p className="muted" style={{ fontSize: 13 }}>Arquivos compactados (zip, 7z), CHD e RVZ entram na biblioteca, mas ainda não são identificados.</p>
