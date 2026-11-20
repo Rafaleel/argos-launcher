@@ -251,9 +251,19 @@ def test_info_survives_an_unreadable_pad_file(client, tmp_path):
 def test_play_passes_the_window_and_input_options(client, tmp_path):
     gid = prepare(client, tmp_path)
     out = native_dolphin(client, tmp_path)
-    client.put("/api/dolphin/defaults", json={"render_to_main": True})
+    client.put("/api/dolphin/defaults", json={"keep_on_top": True})
     client.put(f"/api/games/{gid}/profile", json={"background_input": True})
     assert client.post(f"/api/games/{gid}/play").status_code == 200
     argv = wait_for(out)["argv"]
-    assert "Dolphin.Display.RenderToMain=True" in argv and "Dolphin.Input.BackgroundInput=True" in argv
+    assert "Dolphin.Display.KeepWindowOnTop=True" in argv and "Dolphin.Input.BackgroundInput=True" in argv
     assert not (Path.home() / ".local/share/dolphin-emu/GameSettings").exists()  # these never touch the game INI
+
+
+def test_play_refuses_render_to_main_with_batch_mode(client, tmp_path):
+    gid = prepare(client, tmp_path)
+    out = native_dolphin(client, tmp_path)  # registered with -b, like the real setup
+    client.put(f"/api/games/{gid}/profile", json={"render_to_main": True})
+    r = client.post(f"/api/games/{gid}/play")
+    assert r.status_code == 409 and "-b" in r.json()["detail"]
+    assert not out.exists()  # nothing was started
+    assert not any(g["playing"] for g in client.get("/api/games").json())
