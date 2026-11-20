@@ -120,5 +120,7 @@ export const api = {
   saveGameRa: (id: number, ra: string) => call<{ ra_id: number | null }>(`/games/${id}/ra`, "PUT", { ra }),
   syncGameRa: (id: number) => call<AchievementSummary>(`/games/${id}/ra/sync`, "POST"),
   syncAllRa: () => call<RaSyncResult[]>("/ra/sync", "POST"),
+  detectGameRa: (id: number) => call<{ found: boolean; ra_id: number | null; hash: string }>(`/games/${id}/ra/detect`, "POST"),
+  detectAllRa: () => call<RaSyncResult[]>("/ra/detect", "POST"),
   play: (id: number) => call<{ pid: number; session_id: number }>(`/games/${id}/play`, "POST"),
 };
