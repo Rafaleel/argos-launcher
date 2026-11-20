@@ -106,9 +106,12 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
     achievements = {}
     for r in latest:
         try:
-            achievements[r["game_id"]] = ra_summary({**json.loads(r["payload"]), "synced_at": r["timestamp"]})
+            payload = json.loads(r["payload"])
+            # only a sync of the game that is linked now (a changed or removed link hides the old result)
+            if isinstance(payload, dict) and ra_ids.get(r["game_id"]) is not None and payload.get("ra_id") == ra_ids[r["game_id"]]:
+                achievements[r["game_id"]] = ra_summary({**payload, "synced_at": r["timestamp"]})
         except ValueError:
-            pass
+            pass  # a broken old signal must not take the library down
     result = []
     for r in rows:
         game = {k: v for k, v in dict(r).items() if k not in ("emu_exe", "emu_args")}

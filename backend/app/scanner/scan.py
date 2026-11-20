@@ -174,10 +174,14 @@ def _regroup(conn: sqlite3.Connection, index: DatIndex) -> int:
         )
         game_id = conn.execute("SELECT id FROM games WHERE key = ?", (key,)).fetchone()["id"]
         conn.execute("UPDATE files SET game_id = ? WHERE id = ?", (game_id, f["id"]))
-    # Games with play history stay even when their files are gone (the history
-    # must survive an unmounted drive); /api/games hides them while file-less.
+    # A game that other tables still point at stays even when its files are gone (history
+    # must survive an unmounted drive, and the foreign keys would refuse the delete);
+    # /api/games hides it while it has no files.
     conn.execute(
         "DELETE FROM games WHERE id NOT IN (SELECT game_id FROM files WHERE game_id IS NOT NULL)"
         " AND id NOT IN (SELECT game_id FROM sessions)"
+        " AND id NOT IN (SELECT game_id FROM signals)"
+        " AND id NOT IN (SELECT game_id FROM milestones)"
+        " AND id NOT IN (SELECT game_id FROM progress_estimates)"
     )
     return conn.execute("SELECT COUNT(*) FROM games").fetchone()[0]

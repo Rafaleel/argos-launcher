@@ -87,7 +87,9 @@ async function call<T>(path: string, method = "GET", body?: unknown): Promise<T>
   });
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
-    throw new Error(typeof detail?.detail === "string" ? detail.detail : `Erro ${res.status}`);
+    const d = detail?.detail;
+    // validation errors come as a list of {loc, msg}; show the first message
+    throw new Error(typeof d === "string" ? d : Array.isArray(d) && d[0]?.msg ? String(d[0].msg) : `Erro ${res.status}`);
   }
   return res.json();
 }

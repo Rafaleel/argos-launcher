@@ -327,3 +327,294 @@ def test_database_file_is_private(tmp_path, monkeypatch):
     path = tmp_path / "private" / "new.db"
     connect(path).close()
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600  # it holds the API key
+
+
+# ---------------------------------------------------------------- review fixes
+
+
+import socket
+
+
+class RawServer:
+    """Sends fixed bytes and closes: for answers a real HTTP server would never produce."""
+
+    def __init__(self, payload: bytes, slow: float = 0.0):
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(5)
+        self.url = f"http://127.0.0.1:{self.sock.getsockname()[1]}/API/"
+        threading.Thread(target=self._run, args=(payload, slow), daemon=True).start()
+
+    def _run(self, payload, slow):
+        while True:
+            try:
+                conn, _ = self.sock.accept()
+            except OSError:
+                return
+            try:
+                conn.recv(65536)
+                if slow:
+                    conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n")
+                    for _ in range(200):
+                        conn.sendall(b" ")
+                        time.sleep(slow)
+                else:
+                    conn.sendall(payload)
+            except OSError:
+                pass
+            finally:
+                conn.close()
+
+    def close(self):
+        self.sock.close()
+
+
+def raw(monkeypatch, payload, slow=0.0):
+    srv = RawServer(payload, slow)
+    monkeypatch.setattr(ra, "BASE", srv.url)
+    return srv
+
+
+def http(body: bytes, extra=b"") -> bytes:
+    return b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" + extra + b"Content-Length: %d\r\n\r\n" % len(body) + body
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        http(b'{"NumAchievements": Infinity, "Achievements": {}}'),
+        http(b'{"NumAchievements": NaN, "Achievements": {}}'),
+        http(b"[" * 200000 + b"]" * 200000),  # RecursionError in the JSON decoder
+        b"GARBAGE\r\n\r\n{}",  # BadStatusLine
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nZZ\r\nx",  # malformed chunk
+        b"HTTP/1.1 200 OK\r\n" + b"X: " + b"a" * 70000 + b"\r\n\r\n{}",  # header line too long
+        b"HTTP/1.1 200 OK\r\n" + b"".join(b"H%d: x\r\n" % i for i in range(150)) + b"\r\n{}",  # too many headers
+    ],
+    ids=["infinity", "nan", "deep-nesting", "bad-status", "bad-chunk", "long-header", "many-headers"],
+)
+def test_hostile_http_answers_become_a_readable_error_not_a_crash(monkeypatch, payload):
+    raw(monkeypatch, payload)
+    with pytest.raises(RAError) as exc:
+        ra.fetch_progress("u", KEY, 1)
+    assert str(exc.value) and KEY not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"NumAchievements": 10**400, "NumAwardedToUser": 1, "Achievements": {}},
+        {"NumAchievements": float("inf"), "Achievements": {}},
+        {"NumAchievements": "1e999", "Achievements": {}},
+        {"Achievements": 5}, {"Achievements": True}, {"Achievements": "text"},
+    ],
+    ids=["huge-int", "inf-float", "exp-string", "number", "bool", "string"],
+)
+def test_odd_value_types_never_raise_outside_rarerror(data, monkeypatch):
+    monkeypatch.setattr(ra, "get_json", lambda url, timeout=15.0: data)
+    try:
+        result = ra.fetch_progress("u", KEY, 1)
+    except RAError:
+        return  # a readable refusal is fine
+    s = summary({**result, "synced_at": "t"})  # and whatever was accepted must be safe to show
+    assert s["percent"] is None or 0 <= s["percent"] <= 100
+
+
+def test_counts_are_sane_numbers_only():
+    p = parse_progress({"NumAchievements": -5, "NumAwardedToUser": 3, "Achievements": {"1": {"ID": 1, "DateEarned": "x"}}}, 1)
+    assert p["total"] == 1 and p["earned"] == 3  # a negative total is ignored, not trusted
+    assert summary({**p, "synced_at": None})["percent"] == 100.0  # and a percent is never negative or above 100
+    p = parse_progress({"NumAchievements": True, "Achievements": {"1": {"ID": 1}, "2": {"ID": 2}}}, 1)
+    assert p["total"] == 2  # a boolean is not a count
+    p = parse_progress({"Achievements": {"1": {"ID": 7, "Points": 5, "DateEarned": "x"}, "2": {"ID": 7, "Points": 5, "DateEarned": "x"}}}, 1)
+    assert (p["earned"], p["points_earned"], len(p["earned_list"])) == (1, 5, 1)  # the same id twice counts once
+    p = parse_progress({"NumAchievements": 1, "Title": {"a": 1}, "Achievements": {"1": {"ID": 1, "Points": -1000, "DateEarned": "x"}}}, 1)
+    assert p["points_earned"] == 0 and p["title"] == ""
+
+
+def test_non_dict_achievement_items_are_skipped():
+    p = parse_progress({"Achievements": [None, 5, "x", {"ID": 1, "DateEarned": "x"}]}, 1)
+    assert (p["total"], p["earned"]) == (1, 1)
+
+
+def test_summary_never_raises_even_for_garbage_payloads(client, tmp_path):
+    from app.db import connect
+
+    assert summary({"total": 10**400, "earned": 5}) == {"title": "", "total": 0, "earned": 5, "earned_hardcore": 0, "percent": None, "synced_at": None}
+    assert summary({"total": "x", "earned": None})["percent"] is None and summary("not a dict") is None
+    gid = prepare(client, tmp_path)
+    c = connect()
+    c.execute("INSERT INTO ra_games (game_id, ra_id) VALUES (?, 5)", (gid,))
+    store_signal(c, gid, "achievements", {"ra_id": 5, "total": 10**400, "earned": 5})
+    c.execute("INSERT INTO signals (game_id, type, payload, timestamp) VALUES (?, 'achievements', 'not json', 't')", (gid,))
+    c.commit()
+    assert client.get("/api/games").status_code == 200  # one bad stored signal must not take the library down
+    assert client.get(f"/api/games/{gid}/ra").status_code == 200
+
+
+def test_server_error_text_that_repeats_the_key_is_redacted(client, tmp_path, monkeypatch):
+    gid = prepare(client, tmp_path)
+    client.put("/api/ra/settings", json={"user": "u", "key": KEY})
+    client.put(f"/api/games/{gid}/ra", json={"ra": "1"})
+    monkeypatch.setattr(ra, "get_json", lambda url, timeout=15.0: {"Error": f"invalid key {KEY}"})
+    r = client.post(f"/api/games/{gid}/ra/sync")
+    assert r.status_code == 502 and KEY not in r.text and "invalid key" in r.text
+
+
+def test_validation_errors_do_not_echo_the_submitted_key(client):
+    r = client.put("/api/ra/settings", json={"user": "u", "key": KEY + " has space"})
+    assert r.status_code == 422 and KEY not in r.text and r.json()["detail"][0]["msg"]
+    assert client.put("/api/ra/settings", json={"user": "   "}).status_code == 422  # blank after trimming
+    assert client.put("/api/ra/settings", json={"user": "  rafael  "}).json()["user"] == "rafael"
+
+
+def test_the_whole_answer_has_a_deadline_not_just_each_read(monkeypatch):
+    raw(monkeypatch, b"", slow=0.2)  # one byte every 0.2 s, for 40 s
+    monkeypatch.setattr(ra, "TOTAL_TIMEOUT", 1.0)
+    started = time.monotonic()
+    with pytest.raises(RAError, match="demorou demais"):
+        ra.fetch_progress("u", KEY, 1)
+    assert time.monotonic() - started < 5
+
+
+def test_redirect_target_receives_nothing(server):
+    other = Server()
+    try:
+        server.reply = (307, b"", {"Location": other.url + "steal"})
+        with pytest.raises(RAError, match="307"):
+            ra.fetch_progress("u", KEY, 1)
+        assert other.requests == []  # the key never reached the other host
+    finally:
+        other.close()
+
+
+@pytest.mark.parametrize("text", [
+    "evilretroachievements.org/game/5", "https://example.com/?u=retroachievements.org/game/5",
+    "retroachievements.org.evil.com/game/5", "retroachievements.org/game/12abc",
+    "https://retroachievements.org/game/9999999999999999999999999", "٣٤", "１２",
+    "retroachievements.org/game/", "ftp://retroachievements.org/game/5",
+])
+def test_game_refs_are_anchored_and_ascii_only(text):
+    with pytest.raises(ValueError):
+        parse_game_ref(text)
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("https://www.retroachievements.org/game/5/hashes", 5), ("http://retroachievements.org/game/5?x=1#f", 5),
+    ("HTTPS://RETROACHIEVEMENTS.ORG/game/00005", 5),
+])
+def test_real_page_urls_still_work(text, expected):
+    assert parse_game_ref(text) == expected
+
+
+def test_a_huge_id_in_a_url_is_a_422_not_a_500(client, tmp_path):
+    gid = prepare(client, tmp_path)
+    r = client.put(f"/api/games/{gid}/ra", json={"ra": "https://retroachievements.org/game/9999999999999999999999999"})
+    assert r.status_code == 422
+
+
+def test_changing_or_removing_the_link_hides_the_old_result(client, tmp_path, monkeypatch):
+    gid = prepare(client, tmp_path)
+    client.put("/api/ra/settings", json={"user": "u", "key": KEY})
+    client.put(f"/api/games/{gid}/ra", json={"ra": "3176"})
+    monkeypatch.setattr(ra, "get_json", lambda url, timeout=15.0: PASCAL)
+    client.post(f"/api/games/{gid}/ra/sync")
+    shown = lambda: next(g for g in client.get("/api/games").json() if g["id"] == gid)["achievements"]  # noqa: E731
+    assert shown()["percent"] == 50.0
+    client.put(f"/api/games/{gid}/ra", json={"ra": "9999"})  # another game now
+    assert shown() is None and client.get(f"/api/games/{gid}/ra").json()["summary"] is None
+    client.put(f"/api/games/{gid}/ra", json={"ra": ""})
+    assert shown() is None
+    client.put(f"/api/games/{gid}/ra", json={"ra": "3176"})  # back to the one that was synced
+    assert shown()["percent"] == 50.0
+
+
+def test_sync_all_goes_on_after_an_unexpected_error_in_one_game(client, tmp_path, monkeypatch):
+    from app import api_ra
+    from app.db import connect
+
+    monkeypatch.setattr(api_ra, "PAUSE", 0)
+    gid = prepare(client, tmp_path)
+    c = connect()
+    other = c.execute("INSERT INTO games (key, title, platform, identified) VALUES ('k', 'AAA', 'P', 1)").lastrowid
+    c.commit()
+    client.put("/api/ra/settings", json={"user": "u", "key": KEY})
+    client.put(f"/api/games/{other}/ra", json={"ra": "1"})
+    client.put(f"/api/games/{gid}/ra", json={"ra": "2"})
+
+    def fake(url, timeout=15.0):
+        if "g=1&" in url or url.endswith("g=1"):
+            raise RuntimeError("boom with " + KEY)
+        return PASCAL
+
+    monkeypatch.setattr(ra, "get_json", fake)
+    r = client.post("/api/ra/sync")
+    assert r.status_code == 200 and [x["ok"] for x in r.json()] == [False, True] and KEY not in r.text
+
+
+def test_collector_needs_both_credentials_and_a_link(client, tmp_path):
+    from app.collectors import ra_store
+    from app.db import connect
+
+    gid = prepare(client, tmp_path)
+    c = connect()
+    ra_store.set_credentials(c, "u", KEY)
+    assert ra.RetroAchievementsCollector().collect(c, gid) is None  # credentials but no link
+    ra_store.set_credentials(c, "u", "")
+    ra_store.set_ra_id(c, gid, 5)
+    assert ra.RetroAchievementsCollector().collect(c, gid) is None  # link but no key
+
+
+@pytest.mark.parametrize("table", ["signals", "milestones", "progress_estimates"])
+def test_scan_survives_a_game_that_lost_its_files_while_any_table_still_points_at_it(client, tmp_path, monkeypatch, table):
+    """Each table alone must protect the game: the foreign key made every later scan fail with a 500."""
+    import os
+
+    from app.db import connect
+
+    gid = prepare(client, tmp_path)
+    (tmp_path / "roms" / "other.gba").write_bytes(b"x")  # keep the folder non-empty
+    client.post("/api/scan")
+    c = connect()
+    if table == "signals":
+        client.put("/api/ra/settings", json={"user": "u", "key": KEY})
+        client.put(f"/api/games/{gid}/ra", json={"ra": "3176"})
+        monkeypatch.setattr(ra, "get_json", lambda url, timeout=15.0: PASCAL)
+        assert client.post(f"/api/games/{gid}/ra/sync").status_code == 200
+    elif table == "milestones":
+        c.execute("INSERT INTO milestones (game_id, position, name) VALUES (?, 1, 'm')", (gid,))
+    else:
+        c.execute("INSERT INTO progress_estimates (game_id, timestamp, mean, lower, upper) VALUES (?, 't', 0.5, 0.4, 0.6)", (gid,))
+    c.commit()
+    iso = tmp_path / "roms" / "re2.iso"
+    data = iso.read_bytes()
+    os.remove(iso)
+    assert client.post("/api/scan").status_code == 200  # was: 500 IntegrityError, forever
+    assert gid not in [g["id"] for g in client.get("/api/games").json()]  # no files: hidden
+    (tmp_path / "roms" / "new.gba").write_bytes(b"new")
+    client.post("/api/scan")
+    assert any(g["title"] == "new" for g in client.get("/api/games").json())  # new games still get in
+    iso.write_bytes(data)
+    assert client.post("/api/scan").status_code == 200
+    back = next(g for g in client.get("/api/games").json() if g["id"] == gid)  # same id: the history is back
+    if table == "signals":
+        assert back["achievements"]["percent"] == 50.0
+
+
+def test_database_files_including_an_old_wal_are_made_private(tmp_path):
+    import sqlite3
+
+    from app.db import connect
+
+    path = tmp_path / "old.db"
+    first = sqlite3.connect(path)
+    first.execute("PRAGMA journal_mode = WAL")
+    first.execute("CREATE TABLE t (x)")
+    first.execute("INSERT INTO t VALUES (1)")
+    first.commit()  # leaves -wal and -shm behind, still open
+    for suffix in ("", "-wal", "-shm"):
+        if os.path.exists(f"{path}{suffix}"):
+            os.chmod(f"{path}{suffix}", 0o644)
+    connect(path).close()
+    modes = {suffix: stat.S_IMODE(os.stat(f"{path}{suffix}").st_mode) for suffix in ("", "-wal", "-shm") if os.path.exists(f"{path}{suffix}")}
+    assert modes and set(modes.values()) == {0o600}, modes
+    first.close()
