@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from pathlib import Path
 
@@ -62,6 +63,11 @@ CREATE TABLE IF NOT EXISTS game_profiles (
     game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
     data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ra_games (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+    ra_id INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signals_game ON signals(game_id, type, id);
 CREATE TABLE IF NOT EXISTS progress_estimates (
     id INTEGER PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES games(id),
@@ -86,4 +92,9 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
+    for suffix in ("", "-wal", "-shm"):  # the database holds the RetroAchievements key, and the WAL holds the same data as the database
+        try:
+            os.chmod(f"{path}{suffix}", 0o600)
+        except OSError:
+            pass  # that file does not exist (yet)
     return conn

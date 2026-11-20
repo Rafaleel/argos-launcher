@@ -337,10 +337,19 @@ def test_pack_status_survives_a_broken_symlink(tmp_path):
 
 def test_window_and_input_options_become_config_overrides():
     nat = dolphin.detect("/usr/bin/dolphin-emu", ["-b", "-e", "{rom}"])
-    args, env = dolphin.launch_plan(nat, ["-b", "-e", "{rom}"], {"render_to_main": True, "background_input": False, "keep_on_top": True})
-    assert args == ["-b", "-e", "{rom}", "-C", "Dolphin.Display.RenderToMain=True", "-C", "Dolphin.Input.BackgroundInput=False",
+    args, env = dolphin.launch_plan(nat, ["-e", "{rom}"], {"render_to_main": True, "background_input": False, "keep_on_top": True})
+    assert args == ["-e", "{rom}", "-C", "Dolphin.Display.RenderToMain=True", "-C", "Dolphin.Input.BackgroundInput=False",
                     "-C", "Dolphin.Display.KeepWindowOnTop=True"] and env == {}
     assert dolphin.launch_plan(nat, ["{rom}"], {"vsync": True}) == (["{rom}"], {})  # not set: nothing added
     for bad in ({"render_to_main": "yes please"},):
         with pytest.raises(ValueError):
             VideoSettings(**bad)
+
+
+@pytest.mark.parametrize("flag", ["-b", "--batch"])
+def test_render_to_main_is_refused_in_batch_mode(flag):
+    # batch mode never shows Dolphin's main window: rendering there would hide the game
+    nat = dolphin.detect("/usr/bin/dolphin-emu", [])
+    with pytest.raises(ValueError, match="-b"):
+        dolphin.launch_plan(nat, [flag, "-e", "{rom}"], {"render_to_main": True})
+    assert dolphin.launch_plan(nat, [flag, "-e", "{rom}"], {"render_to_main": False})[0][-1] == "Dolphin.Display.RenderToMain=False"

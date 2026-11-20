@@ -183,6 +183,12 @@ def apply_game_settings(install: Install, game_id: str, settings: dict, previous
 def launch_plan(install: Install, args: list[str], settings: dict) -> tuple[list[str], dict[str, str]]:
     """Extra arguments and environment for the launch. `args` is the emulator template."""
     args, env = list(args), {}
+    if settings.get("render_to_main") and ("-b" in args or "--batch" in args):
+        # Dolphin never shows its main window in batch mode (MainWindow.cpp), so the game would be invisible
+        raise ValueError(
+            "\"Renderizar na janela principal\" não funciona com o argumento -b do emulador: o jogo abriria numa janela "
+            "escondida. Desligue a opção ou tire o -b (sem ele o Dolphin fica aberto depois do jogo e o tempo conta até fechá-lo)."
+        )
     if settings.get("gpu") == "nvidia":
         if install.flatpak and "run" not in args:
             raise ValueError(
