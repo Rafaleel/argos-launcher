@@ -13,7 +13,8 @@ export function RaPanel({ notify, onSynced }: { notify: Notify; onSynced: () => 
   const [key, setKey] = useState("");
   const [hasKey, setHasKey] = useState(false);
   const [results, setResults] = useState<RaSyncResult[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "detect" | "sync">("");
+  const [detected, setDetected] = useState(false);
 
   useEffect(() => {
     api.raSettings().then((s) => { setUser(s.user); setHasKey(s.has_key); }).catch((e) => notify(e.message, true));
@@ -28,12 +29,12 @@ export function RaPanel({ notify, onSynced }: { notify: Notify; onSynced: () => 
       .then((s) => { setHasKey(s.has_key); setKey(""); notify("Chave removida."); })
       .catch((e) => notify(e.message, true));
   const detectAll = () => {
-    setBusy(true);
-    api.detectAllRa().then((r) => { setResults(r); onSynced(); }).catch((e) => notify(e.message, true)).finally(() => setBusy(false));
+    setBusy("detect");
+    api.detectAllRa().then((r) => { setResults(r); setDetected(true); onSynced(); }).catch((e) => notify(e.message, true)).finally(() => setBusy(""));
   };
   const syncAll = () => {
-    setBusy(true);
-    api.syncAllRa().then((r) => { setResults(r); onSynced(); }).catch((e) => notify(e.message, true)).finally(() => setBusy(false));
+    setBusy("sync");
+    api.syncAllRa().then((r) => { setResults(r); setDetected(false); onSynced(); }).catch((e) => notify(e.message, true)).finally(() => setBusy(""));
   };
 
   return (
@@ -57,12 +58,12 @@ export function RaPanel({ notify, onSynced }: { notify: Notify; onSynced: () => 
           {hasKey && <div><button onClick={removeKey}>Remover chave</button></div>}
         </div>
         <p>
-          <button onClick={detectAll} disabled={busy}>{busy ? "Trabalhando…" : "Detectar os IDs dos jogos automaticamente"}</button>{" "}
-          <button onClick={syncAll} disabled={busy || !hasKey}>{busy ? "Sincronizando…" : "Sincronizar todos os jogos vinculados"}</button>
+          <button onClick={detectAll} disabled={busy !== ""}>{busy === "detect" ? "Detectando…" : "Detectar os IDs dos jogos automaticamente"}</button>{" "}
+          <button onClick={syncAll} disabled={busy !== "" || !hasKey}>{busy === "sync" ? "Sincronizando…" : "Sincronizar todos os jogos vinculados"}</button>
         </p>
         {results && (
           results.length === 0
-            ? <p className="muted">Nenhum jogo vinculado ainda. Abra "Ajustes" em um jogo e informe o ID dele no RetroAchievements.</p>
+            ? <p className="muted">{detected ? "Nenhum jogo de GameCube sem vínculo para detectar." : "Nenhum jogo vinculado ainda. Abra \"Ajustes\" em um jogo e informe o ID dele no RetroAchievements."}</p>
             : <ul>{results.map((r) => <li key={r.game_id}>{r.ok ? "✓" : "✗"} {r.title}: {r.message}</li>)}</ul>
         )}
       </div>
@@ -74,7 +75,7 @@ export function GameAchievements({ gameId, notify, onSynced }: { gameId: number;
   const [ref, setRef] = useState("");
   const [linked, setLinked] = useState<number | null>(null);
   const [summary, setSummary] = useState<AchievementSummary | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "detect" | "sync">("");
 
   useEffect(() => {
     api.gameRa(gameId).then((r) => { setLinked(r.ra_id); setRef(r.ra_id ? String(r.ra_id) : ""); setSummary(r.summary); }).catch((e) => notify(e.message, true));
@@ -89,7 +90,7 @@ export function GameAchievements({ gameId, notify, onSynced }: { gameId: number;
       return api.gameRa(gameId).then((g) => { setSummary(g.summary); onSynced(); });
     }).catch((e) => notify(e.message, true));
   const detect = () => {
-    setBusy(true);
+    setBusy("detect");
     api.detectGameRa(gameId)
       .then((r) => {
         if (!r.found) { notify("O RetroAchievements não reconheceu este disco. Informe o ID à mão.", true); return; }
@@ -97,12 +98,12 @@ export function GameAchievements({ gameId, notify, onSynced }: { gameId: number;
         notify(`Detectado: jogo ${r.ra_id} no RetroAchievements. Confira na página do site que é a versão certa.`);
         return api.gameRa(gameId).then((g) => { setSummary(g.summary); onSynced(); });
       })
-      .catch((e) => notify(e.message, true)).finally(() => setBusy(false));
+      .catch((e) => notify(e.message, true)).finally(() => setBusy(""));
   };
   const sync = () => {
-    setBusy(true);
+    setBusy("sync");
     api.syncGameRa(gameId).then((s) => { setSummary(s); notify(`Conquistas: ${achievementText(s)}.`); onSynced(); })
-      .catch((e) => notify(e.message, true)).finally(() => setBusy(false));
+      .catch((e) => notify(e.message, true)).finally(() => setBusy(""));
   };
 
   return (
@@ -113,9 +114,9 @@ export function GameAchievements({ gameId, notify, onSynced }: { gameId: number;
           <label>ID do jogo no RetroAchievements ou endereço da página dele</label>
           <input aria-label="ID do jogo no RetroAchievements" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="1234 ou retroachievements.org/game/1234" />
         </div>
-        <button onClick={detect} disabled={busy}>Detectar automaticamente</button>
-        <button onClick={link}>Salvar vínculo</button>
-        <button onClick={sync} disabled={busy || linked === null}>{busy ? "Sincronizando…" : "Sincronizar"}</button>
+        <button onClick={detect} disabled={busy !== ""}>{busy === "detect" ? "Detectando…" : "Detectar automaticamente"}</button>
+        <button onClick={link} disabled={busy !== ""}>Salvar vínculo</button>
+        <button onClick={sync} disabled={busy !== "" || linked === null}>{busy === "sync" ? "Sincronizando…" : "Sincronizar"}</button>
       </div>
       <p>
         {summary ? <>Conquistas: <strong>{achievementText(summary)}</strong>{summary.title && <> em "{summary.title}"</>}. Última sincronização: {localTime(summary.synced_at)}.</> : "Ainda não sincronizado."}

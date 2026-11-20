@@ -120,7 +120,7 @@ def sync_all(conn: sqlite3.Connection = Conn) -> list[dict]:
         _sync_lock.release()
 
 
-def _detect(conn: sqlite3.Connection, game_id: int) -> dict:
+def _detect(conn: sqlite3.Connection, game_id: int, keep_existing: bool = False) -> dict:
     """Hash the game's disc image and ask RetroAchievements which game it is. Needs no credentials."""
     game = conn.execute("SELECT platform FROM games WHERE id = ?", (game_id,)).fetchone()
     hasher = HASHERS.get(game["platform"] or "")
@@ -138,7 +138,14 @@ def _detect(conn: sqlite3.Connection, game_id: int) -> dict:
         raise HTTPException(502, str(exc)) from exc
     if ra_id is None:
         return {"found": False, "ra_id": None, "hash": digest}
-    ra_store.set_ra_id(conn, game_id, ra_id)
+    if keep_existing:
+        # the bulk run read its list a while ago: a link saved meanwhile is the user's choice, never overwrite it
+        cur = conn.execute("INSERT INTO ra_games (game_id, ra_id) VALUES (?, ?) ON CONFLICT(game_id) DO NOTHING", (game_id, ra_id))
+        conn.commit()
+        if cur.rowcount == 0:
+            return {"found": True, "ra_id": ra_id, "hash": digest, "kept": True}
+    else:
+        ra_store.set_ra_id(conn, game_id, ra_id)
     return {"found": True, "ra_id": ra_id, "hash": digest}
 
 
@@ -171,8 +178,8 @@ def detect_all(conn: sqlite3.Connection = Conn) -> list[dict]:
             if i and PAUSE:
                 time.sleep(PAUSE)
             try:
-                r = _detect(conn, row["id"])
-                msg = f"jogo {r['ra_id']} no RetroAchievements" if r["found"] else "o RetroAchievements não reconheceu este disco"
+                r = _detect(conn, row["id"], keep_existing=True)
+                msg = "você vinculou este jogo enquanto eu detectava; mantive o seu vínculo" if r.get("kept") else f"jogo {r['ra_id']} no RetroAchievements" if r["found"] else "o RetroAchievements não reconheceu este disco"
                 results.append({"game_id": row["id"], "title": row["title"], "ok": r["found"], "message": msg})
             except HTTPException as exc:
                 results.append({"game_id": row["id"], "title": row["title"], "ok": False, "message": exc.detail})

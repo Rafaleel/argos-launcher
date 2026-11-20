@@ -4,6 +4,7 @@ Nothing here reaches the real site: the lookup goes to a server on 127.0.0.1.
 """
 import hashlib
 import json
+import os
 import struct
 import threading
 import zlib
@@ -95,6 +96,17 @@ def test_empty_segments_are_skipped(disc):
 )
 def test_not_a_usable_gamecube_image_gives_none(disc, img):
     assert gamecube_hash(disc(img)) is None
+
+
+def test_a_fifo_or_directory_is_refused_without_blocking(tmp_path):
+    fifo = tmp_path / "pipe.iso"
+    os.mkfifo(fifo)
+    done = []
+    t = threading.Thread(target=lambda: done.append(gamecube_hash(str(fifo))), daemon=True)
+    t.start()
+    t.join(3)
+    assert done == [None]  # open() on a FIFO without a writer would wait forever
+    assert gamecube_hash(str(tmp_path)) is None
 
 
 def test_missing_file_gives_none(tmp_path):
@@ -321,3 +333,23 @@ def test_an_operation_in_progress_refuses_detection(client, tmp_path, lookup):
     finally:
         api_ra._sync_lock.release()
     assert lookup.calls == []
+
+
+def test_bulk_detect_never_overwrites_a_link_saved_while_it_runs(client, tmp_path, lookup):
+    ids = library(client, tmp_path, {"a.iso": (GC, gc_image(fill=1)), "b.iso": (GC, gc_image(fill=2))})
+
+    def slow():
+        client.put(f"/api/games/{ids['b.iso']}/ra", json={"ra": "999"})  # the user links b while a is being looked up
+        return 200, {"Success": True, "GameID": 3176}, {}
+
+    lookup.reply = slow
+    results = client.post("/api/ra/detect").json()
+    assert client.get(f"/api/games/{ids['b.iso']}/ra").json()["ra_id"] == 999
+    assert "mantive" in results[1]["message"] and client.get(f"/api/games/{ids['a.iso']}/ra").json()["ra_id"] == 3176
+
+
+def test_single_detect_replaces_the_existing_link_on_purpose(client, tmp_path, lookup):
+    gid = library(client, tmp_path, {"a.iso": (GC, gc_image())})["a.iso"]
+    client.put(f"/api/games/{gid}/ra", json={"ra": "999"})
+    assert client.post(f"/api/games/{gid}/ra/detect").json()["ra_id"] == 3176
+    assert client.get(f"/api/games/{gid}/ra").json()["ra_id"] == 3176
