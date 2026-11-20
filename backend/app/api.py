@@ -10,6 +10,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import covers
+from app.config import db_path
+from app.editions import edition_ids
 from app.db import connect
 from app.collectors.retroachievements import summary as ra_summary
 from app.emulators import detect, dolphin, store
@@ -217,6 +219,12 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     if emu is None:
         raise HTTPException(409, f"Nenhum emulador configurado para {game['platform']}")
     paths = [r["path"] for r in conn.execute("SELECT path FROM files WHERE game_id = ?", (game_id,))]
+    discs = edition_ids(conn, game_id)
+    others = [d for d in discs if d != game_id]
+    if others and conn.execute(
+        f"SELECT 1 FROM sessions WHERE game_id IN ({','.join('?' * len(others))}) AND ended_at IS NULL", others
+    ).fetchone():
+        raise HTTPException(409, "Outro disco deste jogo já está aberto")
     args, env = json.loads(emu["args"]), {}
     install = dolphin.detect(emu["executable"], args)
     if install:
@@ -232,6 +240,10 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
                 written = dolphin.apply_game_settings(install, game_code, settings, store.get_written(conn, game_id))
                 store.set_written(conn, game_id, written)
             args, env = dolphin.launch_plan(install, args, settings)
+            if others and (playlist := _disc_playlist(conn, [game_id, *others])):
+                # Dolphin boots the first entry and swaps to the next one when the game asks for it
+                paths = [playlist]
+                args = [*args, "-C", "Dolphin.Core.AutoDiscChange=True"]
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         except OSError as exc:
@@ -249,6 +261,22 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     except LaunchError as exc:
         raise HTTPException(500, str(exc)) from exc
     return {"pid": pid, "session_id": session_id}
+
+
+def _disc_playlist(conn: sqlite3.Connection, game_ids: list[int]) -> str | None:
+    """An .m3u with one existing disc per game, the chosen one first. None if fewer than two are there."""
+    files = []
+    for gid in game_ids:
+        rows = conn.execute("SELECT path FROM files WHERE game_id = ? ORDER BY path", (gid,)).fetchall()
+        path = next((r["path"] for r in rows if os.path.isfile(r["path"])), None)
+        if path and "\n" not in path and "\r" not in path:  # one path per line
+            files.append(path)
+    if len(files) < 2:
+        return None
+    target = db_path().parent / "playlists" / f"{game_ids[0]}.m3u"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(files) + "\n", encoding="utf-8")
+    return str(target)
 
 
 @router.get("/stats/games")
