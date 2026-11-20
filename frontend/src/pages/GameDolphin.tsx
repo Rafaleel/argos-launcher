@@ -73,7 +73,7 @@ export function GameVideo({ gameId, notify }: { gameId: number; notify: Notify }
   const save = () => api.saveProfile(gameId, mine).then((v) => { setMine(v); notify("Ajustes do jogo salvos. Valem na próxima vez que ele abrir."); })
     .catch((e) => notify(e.message, true));
   return (
-    <Panel title="Vídeo deste jogo" sub={<>"Padrão" usa o que está em Emuladores → Dolphin. ID do disco: {profile.game_code ?? "não lido"}.</>}
+    <Panel title="Vídeo deste jogo" sub={<>"Padrão" usa o que está em Oficina → Emuladores → Dolphin. ID do disco: {profile.game_code ?? "não lido"}.</>}
       action={<button className="btn primary" onClick={save}>Salvar</button>}>
       {profile.game_code === null && (
         <p className="note warn" style={{ marginBottom: 16 }}>

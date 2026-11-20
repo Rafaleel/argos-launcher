@@ -65,7 +65,7 @@ export function GameAchievements({ gameId, notify, onChange }: {
         )}
       </Panel>
       <p className="muted" style={{ fontSize: 13 }}>
-        As conquistas são ganhas dentro do emulador, que precisa estar logado (veja Conquistas no menu). Aqui elas medem o que
+        As conquistas são ganhas dentro do emulador, que precisa estar logado (veja Atividade → Conquistas). Aqui elas medem o que
         você já desbloqueou; ainda não dizem quanto da história você jogou.
       </p>
     </div>
