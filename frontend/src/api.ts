@@ -21,6 +21,9 @@ export type VideoSettings = {
   vsync?: boolean;
   hires_textures?: boolean;
   prefetch_textures?: boolean;
+  render_to_main?: boolean;
+  background_input?: boolean;
+  keep_on_top?: boolean;
 };
 export type Controller = { name: string; device: string };
 export type DolphinInfo = {

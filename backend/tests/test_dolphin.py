@@ -333,3 +333,14 @@ def test_pack_status_survives_a_broken_symlink(tmp_path):
     (pack / "a.dds").write_bytes(b"x" * 10)
     (pack / "broken").symlink_to(tmp_path / "nowhere")
     assert dolphin.pack_status(ins, "GHAE08")["installed"] is True
+
+
+def test_window_and_input_options_become_config_overrides():
+    nat = dolphin.detect("/usr/bin/dolphin-emu", ["-b", "-e", "{rom}"])
+    args, env = dolphin.launch_plan(nat, ["-b", "-e", "{rom}"], {"render_to_main": True, "background_input": False, "keep_on_top": True})
+    assert args == ["-b", "-e", "{rom}", "-C", "Dolphin.Display.RenderToMain=True", "-C", "Dolphin.Input.BackgroundInput=False",
+                    "-C", "Dolphin.Display.KeepWindowOnTop=True"] and env == {}
+    assert dolphin.launch_plan(nat, ["{rom}"], {"vsync": True}) == (["{rom}"], {})  # not set: nothing added
+    for bad in ({"render_to_main": "yes please"},):
+        with pytest.raises(ValueError):
+            VideoSettings(**bad)

@@ -246,3 +246,14 @@ def test_info_survives_an_unreadable_pad_file(client, tmp_path):
     cfg.mkdir(parents=True)
     (cfg / "GCPadNew.ini").write_bytes(b"[GCPad1]\nDevice = SDL/0/Pad\xe9\n")
     assert client.get("/api/dolphin/info").status_code == 200
+
+
+def test_play_passes_the_window_and_input_options(client, tmp_path):
+    gid = prepare(client, tmp_path)
+    out = native_dolphin(client, tmp_path)
+    client.put("/api/dolphin/defaults", json={"render_to_main": True})
+    client.put(f"/api/games/{gid}/profile", json={"background_input": True})
+    assert client.post(f"/api/games/{gid}/play").status_code == 200
+    argv = wait_for(out)["argv"]
+    assert "Dolphin.Display.RenderToMain=True" in argv and "Dolphin.Input.BackgroundInput=True" in argv
+    assert not (Path.home() / ".local/share/dolphin-emu/GameSettings").exists()  # these never touch the game INI
