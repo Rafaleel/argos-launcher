@@ -54,7 +54,20 @@ O sistema usa os sinais **que estiverem disponíveis** para cada jogo; nenhum é
 | Modelos locais | Ollama (LLM e visão) |
 | Fusão de sinais | numpy puro (implementar o filtro à mão) |
 
-**Decisão:** começar como aplicação web local (FastAPI + React no navegador). Empacotar com Tauri só depois que as fases 1 e 2 estiverem funcionando.
+**Decisão:** começar como aplicação web local (FastAPI + React no navegador). Empacotar com Tauri só depois que as fases 1 e 2 estiverem funcionando. **Feito:** o app desktop (Tauri 2, `frontend/src-tauri`) abre a interface e inicia o backend sozinho na porta 8765 (usa `backend/.venv` ou `uv run`); ao fechar a janela, o backend é encerrado com SIGTERM. Se já houver um backend nessa porta, ele é reaproveitado (um segundo backend fecharia as sessões abertas do primeiro). Limite: o backend roda a partir do código-fonte; um pacote instalável precisa do backend embutido como sidecar, o que ainda não foi feito.
+
+### Como rodar
+
+- App desktop: `cd frontend && pnpm tauri dev` (desenvolvimento) ou `pnpm tauri build --no-bundle` e abrir `src-tauri/target/release/argos-launcher`.
+- No navegador: `cd backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8765` e `cd frontend && pnpm dev` (http://127.0.0.1:5173).
+
+### Interface
+
+Navegação lateral (Biblioteca, Estatísticas, Conquistas, Emuladores, Configurações). A biblioteca alterna entre grade de capas e lista; cada jogo tem uma página com capa, tempo, sessões, conquistas e as abas de vídeo e texturas do Dolphin. Arquivos não identificados (como pacotes de textura na pasta de jogos) ficam fora da estante, num filtro próprio. No app desktop as pastas e os pacotes são escolhidos pelo seletor nativo; no navegador, digitando o caminho.
+
+### Capas
+
+Vêm dos repositórios libretro-thumbnails no GitHub (`raw.githubusercontent.com/libretro-thumbnails/<plataforma>/master/Named_Boxarts/<título>.png`), que usam os mesmos nomes dos DATs; para jogos em vários discos também é tentado o nome sem "(Disc N)". Baixadas uma vez e guardadas ao lado do banco (`covers/`). Só a plataforma e o título são enviados. O endereço `thumbnails.libretro.com` devolveu 404 para todos os jogos testados, por isso não é usado.
 
 ## 4. Arquitetura
 
