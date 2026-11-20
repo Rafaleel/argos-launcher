@@ -23,6 +23,10 @@ export function RaPanel({ notify, onSynced }: { notify: Notify; onSynced: () => 
     api.saveRaSettings(user.trim(), key.trim() === "" ? null : key.trim())
       .then((s) => { setHasKey(s.has_key); setKey(""); notify("Credenciais do RetroAchievements salvas."); })
       .catch((e) => notify(e.message, true));
+  const removeKey = () =>
+    api.saveRaSettings(user.trim(), "")
+      .then((s) => { setHasKey(s.has_key); setKey(""); notify("Chave removida."); })
+      .catch((e) => notify(e.message, true));
   const syncAll = () => {
     setBusy(true);
     api.syncAllRa().then((r) => { setResults(r); onSynced(); }).catch((e) => notify(e.message, true)).finally(() => setBusy(false));
@@ -46,6 +50,7 @@ export function RaPanel({ notify, onSynced }: { notify: Notify; onSynced: () => 
             <input aria-label="Chave de API do RetroAchievements" type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" placeholder={hasKey ? "••••••••" : ""} />
           </div>
           <div><button onClick={save} disabled={!user.trim()}>Salvar</button></div>
+          {hasKey && <div><button onClick={removeKey}>Remover chave</button></div>}
         </div>
         <p>
           <button onClick={syncAll} disabled={busy || !hasKey}>{busy ? "Sincronizando…" : "Sincronizar todos os jogos vinculados"}</button>
@@ -71,8 +76,13 @@ export function GameAchievements({ gameId, notify, onSynced }: { gameId: number;
   }, [gameId]);
 
   const link = () =>
-    api.saveGameRa(gameId, ref).then((r) => { setLinked(r.ra_id); setRef(r.ra_id ? String(r.ra_id) : ""); notify(r.ra_id ? "Jogo vinculado." : "Vínculo removido."); onSynced(); })
-      .catch((e) => notify(e.message, true));
+    api.saveGameRa(gameId, ref).then((r) => {
+      setLinked(r.ra_id);
+      setRef(r.ra_id ? String(r.ra_id) : "");
+      notify(r.ra_id ? "Jogo vinculado." : "Vínculo removido.");
+      // a new or removed link must not keep showing the old game's result
+      return api.gameRa(gameId).then((g) => { setSummary(g.summary); onSynced(); });
+    }).catch((e) => notify(e.message, true));
   const sync = () => {
     setBusy(true);
     api.syncGameRa(gameId).then((s) => { setSummary(s); notify(`Conquistas: ${achievementText(s)}.`); onSynced(); })

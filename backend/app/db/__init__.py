@@ -88,12 +88,13 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     # FastAPI opens the connection in one worker thread and runs the endpoint in
     # another; a request uses it from one thread at a time.
     conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT, check_same_thread=False)
-    try:
-        os.chmod(path, 0o600)  # the database holds the RetroAchievements key: owner only
-    except OSError:
-        pass
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
+    for suffix in ("", "-wal", "-shm"):  # the database holds the RetroAchievements key, and the WAL holds the same data as the database
+        try:
+            os.chmod(f"{path}{suffix}", 0o600)
+        except OSError:
+            pass  # that file does not exist (yet)
     return conn

@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
@@ -41,3 +42,10 @@ async def reject_foreign_origin(request: Request, call_next):
         if urlparse(origin).hostname not in ("localhost", "127.0.0.1"):
             return JSONResponse({"detail": "Foreign origin"}, status_code=403)
     return await call_next(request)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    # FastAPI echoes the rejected input by default; the RetroAchievements key travels in a body.
+    errors = [{k: e[k] for k in ("loc", "msg", "type") if k in e} for e in exc.errors()]
+    return JSONResponse({"detail": errors}, status_code=422)

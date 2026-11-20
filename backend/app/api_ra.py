@@ -3,7 +3,9 @@ import threading
 import time
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.api import Conn
 from app.collectors import ra_store
@@ -16,7 +18,7 @@ PAUSE = 1.0  # seconds between calls when syncing many games: the API asks for r
 
 
 class Credentials(BaseModel):
-    user: str = Field(min_length=1, max_length=64, pattern=r"^[^\x00-\x1f]+$")
+    user: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64, pattern=r"^[^\x00-\x1f]+$")]
     key: str | None = Field(None, max_length=128, pattern=r"^[^\x00-\x1f\s]*$")  # None keeps the stored key
 
 
@@ -36,6 +38,12 @@ def put_settings(body: Credentials, conn: sqlite3.Connection = Conn) -> dict:
     return get_settings(conn)
 
 
+def current_summary(conn: sqlite3.Connection, game_id: int, ra_id: int | None) -> dict | None:
+    """The latest sync, but only if it belongs to the game currently linked (not an old link)."""
+    signal = latest_signal(conn, game_id, "achievements")
+    return summary(signal) if signal and ra_id is not None and signal.get("ra_id") == ra_id else None
+
+
 def _game(conn: sqlite3.Connection, game_id: int) -> sqlite3.Row:
     row = conn.execute("SELECT id, title FROM games WHERE id = ?", (game_id,)).fetchone()
     if row is None:
@@ -46,7 +54,8 @@ def _game(conn: sqlite3.Connection, game_id: int) -> sqlite3.Row:
 @router.get("/games/{game_id}/ra")
 def get_game_ra(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     _game(conn, game_id)
-    return {"ra_id": ra_store.get_ra_id(conn, game_id), "summary": summary(latest_signal(conn, game_id, "achievements"))}
+    ra_id = ra_store.get_ra_id(conn, game_id)
+    return {"ra_id": ra_id, "summary": current_summary(conn, game_id, ra_id)}
 
 
 @router.put("/games/{game_id}/ra")
@@ -69,7 +78,7 @@ def _sync(conn: sqlite3.Connection, game_id: int) -> dict:
         RetroAchievementsCollector().collect(conn, game_id)
     except RAError as exc:
         raise HTTPException(502, str(exc)) from exc
-    return summary(latest_signal(conn, game_id, "achievements"))
+    return current_summary(conn, game_id, ra_store.get_ra_id(conn, game_id))
 
 
 @router.post("/games/{game_id}/ra/sync")
@@ -102,6 +111,8 @@ def sync_all(conn: sqlite3.Connection = Conn) -> list[dict]:
                 results.append({"game_id": row["id"], "title": row["title"], "ok": False, "message": exc.detail})
                 if "recusou" in str(exc.detail) or "Limite" in str(exc.detail):
                     break  # a bad key or a rate limit will fail every other game too
+            except Exception:  # noqa: BLE001 - one odd game must not abort the batch
+                results.append({"game_id": row["id"], "title": row["title"], "ok": False, "message": "Erro inesperado ao sincronizar este jogo"})
         return results
     finally:
         _sync_lock.release()
