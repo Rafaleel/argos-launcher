@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from app.db import connect
 from app.collectors.retroachievements import summary as ra_summary
-from app.emulators import dolphin, store
+from app.emulators import detect, dolphin, store
 from app.launcher.launch import FilesMissing, LaunchError, launch, validate_executable
 from app.scanner.scan import scan
 from app.sessions.tracker import AlreadyPlaying, start_session
@@ -82,9 +82,42 @@ def run_scan(conn: sqlite3.Connection = Conn) -> dict:
         if not s.rom_dirs:
             # An empty list would delete every game; never do that by accident.
             raise HTTPException(422, "Nenhuma pasta de ROMs configurada")
-        return scan(conn, s.rom_dirs, s.dat_dirs)
+        result = scan(conn, s.rom_dirs, s.dat_dirs)
+        result["emulators_configured"] = auto_configure(conn)
+        return result
     finally:
         _scan_lock.release()
+
+
+def _save_emulator(conn: sqlite3.Connection, platform: str, executable: str, args: list[str]) -> None:
+    conn.execute(
+        "INSERT INTO emulators (platform, executable, args) VALUES (?, ?, ?) "
+        "ON CONFLICT(platform) DO UPDATE SET executable = excluded.executable, args = excluded.args",
+        (platform, executable, json.dumps(args)),
+    )
+    conn.commit()
+
+
+def auto_configure(conn: sqlite3.Connection) -> list[dict]:
+    """Give every library platform that has no emulator yet the best one installed. Never replaces a choice."""
+    taken = {r["platform"] for r in conn.execute("SELECT platform FROM emulators")}
+    missing = [p for p in list_platforms(conn) if p not in taken]
+    if not missing:
+        return []
+    found, done = detect.candidates(), []
+    for platform in missing:
+        c = detect.best_for(platform, found)
+        if c:
+            _save_emulator(conn, platform, c.executable, list(c.args))
+            done.append({"platform": platform, "name": c.name})
+    return done
+
+
+@router.get("/emulators/detected")
+def detected_emulators(conn: sqlite3.Connection = Conn) -> dict:
+    """Installed emulators that can run each library platform, best first."""
+    found = detect.candidates()
+    return {p: [c.as_dict() for c in found if p in c.platforms] for p in list_platforms(conn)}
 
 
 @router.get("/games")
@@ -153,12 +186,7 @@ def put_emulator(body: EmulatorIn, conn: sqlite3.Connection = Conn) -> EmulatorI
         validate_executable(body.executable)
     except LaunchError as exc:
         raise HTTPException(422, str(exc)) from exc
-    conn.execute(
-        "INSERT INTO emulators (platform, executable, args) VALUES (?, ?, ?) "
-        "ON CONFLICT(platform) DO UPDATE SET executable = excluded.executable, args = excluded.args",
-        (body.platform, body.executable, json.dumps(body.args)),
-    )
-    conn.commit()
+    _save_emulator(conn, body.platform, body.executable, body.args)
     return body
 
 
