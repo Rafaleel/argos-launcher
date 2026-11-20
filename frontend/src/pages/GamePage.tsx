@@ -16,6 +16,10 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
     .map(d => d.achievements).find(a => a) ?? null;
   const [history, setHistory] = useState<GameTime[] | null>(null);
   const [summary, setSummary] = useState<AchievementSummary | null>(editionSummary);
+  // where the player stopped: the newest rich presence line of any disc of the edition
+  const place = (collectEditions(games).find(group => group.some(d => d.id === id)) ?? [])
+    .map(d => d.presence).filter(p => p !== null)
+    .sort((a, b) => (b!.at ?? "").localeCompare(a!.at ?? ""))[0] ?? null;
   const [tab, setTab] = useState<Tab | null>(null);
   useEffect(() => {
     let active = true;
@@ -61,6 +65,8 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
             {!multi && <div className="fact"><span className="eyebrow">Tempo jogado</span><b>{formatDuration(game.seconds_played)}</b></div>}
             <div className="fact"><span className="eyebrow">{multi ? "Sessões do disco" : "Sessões"}</span><b>{history ? time?.sessions ?? 0 : "—"}</b></div>
             <div className="fact"><span className="eyebrow">Última vez</span><b>{history ? localDate(time?.last_played ?? null) : "—"}</b></div>
+            {place && <div className="fact" title={place.at ? `Informado pelo RetroAchievements em ${new Date(place.at).toLocaleString("pt-BR")}` : undefined}>
+              <span className="eyebrow">Onde você parou</span><b>{place.message}</b></div>}
           </div>
           <div className="row insert-actions">
             <button className="btn primary big" disabled={!canPlay} onClick={() => play(game)}>

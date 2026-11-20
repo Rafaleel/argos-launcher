@@ -3,13 +3,14 @@ import os
 import sqlite3
 import threading
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import covers
+from app.collectors import presence
 from app.config import db_path
 from app.editions import edition_ids
 from app.db import connect
@@ -141,6 +142,11 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
         """SELECT s.game_id, s.payload, s.timestamp FROM signals s
            JOIN (SELECT game_id, MAX(id) AS mid FROM signals WHERE type = 'achievements' GROUP BY game_id) m ON s.id = m.mid"""
     ).fetchall()
+    places = {
+        r["game_id"]: r["payload"] for r in conn.execute(
+            """SELECT s.game_id, s.payload FROM signals s
+               JOIN (SELECT game_id, MAX(id) AS mid FROM signals WHERE type = 'presence' GROUP BY game_id) m ON s.id = m.mid""")
+    }
     achievements = {}
     for r in latest:
         try:
@@ -162,6 +168,7 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
                 "seconds_played": time.get(r["id"], {}).get("seconds", 0),
                 "ra_id": ra_ids.get(r["id"]),
                 "achievements": achievements.get(r["id"]),
+                "presence": _presence(places.get(r["id"])),
                 "dolphin": bool(r["emu_exe"]) and dolphin.detect(r["emu_exe"], json.loads(r["emu_args"])) is not None,
             }
         )
@@ -179,6 +186,17 @@ def game_cover(game_id: int, conn: sqlite3.Connection = Conn) -> FileResponse:
     if path is None:
         raise HTTPException(404, "Sem capa")
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
+
+
+def _presence(payload: str | None) -> dict | None:
+    """The last rich presence line of a game, for "where you stopped"."""
+    try:
+        p = json.loads(payload) if payload else None
+    except ValueError:
+        return None  # a broken old signal must not take the library down
+    if not isinstance(p, dict) or not isinstance(p.get("message"), str):
+        return None
+    return {"message": p["message"], "at": p.get("at")}
 
 
 @router.get("/platforms")
@@ -260,6 +278,8 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
         raise HTTPException(503, "Banco de dados ocupado; tente de novo") from None
     except LaunchError as exc:
         raise HTTPException(500, str(exc)) from exc
+    started = conn.execute("SELECT started_at FROM sessions WHERE id = ?", (session_id,)).fetchone()["started_at"]
+    presence.start(conn, game_id, session_id, datetime.fromisoformat(started.replace("Z", "+00:00")))
     return {"pid": pid, "session_id": session_id}
 
 
