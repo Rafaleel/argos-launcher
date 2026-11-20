@@ -39,6 +39,35 @@ def per_game(conn: sqlite3.Connection) -> dict[int, dict]:
     return dict(result)
 
 
+def journal(conn: sqlite3.Connection, before: date | None = None, days: int = 3) -> dict:
+    """A session is entered on its local start date. Page by complete active days."""
+    rows = conn.execute(
+        """
+        WITH recent_days AS (
+            SELECT DISTINCT date(started_at, 'localtime') AS day FROM sessions
+            WHERE :before IS NULL OR date(started_at, 'localtime') < :before
+            ORDER BY day DESC LIMIT :limit
+        )
+        SELECT d.day, g.id AS game_id, g.title, g.platform,
+               COUNT(*) AS sessions, MAX(s.started_at) AS last_played,
+               SUM(MAX(0, unixepoch(COALESCE(s.ended_at, s.last_heartbeat, s.started_at))
+                          - unixepoch(s.started_at))) AS seconds
+        FROM recent_days d JOIN sessions s ON date(s.started_at, 'localtime') = d.day
+        JOIN games g ON g.id = s.game_id
+        GROUP BY d.day, g.id ORDER BY d.day DESC, last_played DESC, g.id
+        """,
+        {"before": before.isoformat() if before else None, "limit": days + 1},
+    )
+    entries = {}
+    for row in rows:
+        day = row["day"]
+        if day not in entries and len(entries) == days:
+            return {"days": list(entries.values()), "next_before": next(reversed(entries))}
+        entry = entries.setdefault(day, {"day": day, "games": []})
+        entry["games"].append({key: row[key] for key in row.keys() if key != "day"})
+    return {"days": list(entries.values()), "next_before": None}
+
+
 def per_platform(conn: sqlite3.Connection) -> dict[str | None, int]:
     totals: dict[str | None, int] = defaultdict(int)
     for _, platform, start, end in intervals(conn):

@@ -243,3 +243,13 @@ def test_games_listing_uses_the_sessions_index(conn):
         )
     )
     assert "idx_sessions_game" in plan  # a full scan per game made /api/games quadratic
+
+
+def test_only_the_tauri_origin_gets_cors(client):
+    pre = {"Access-Control-Request-Method": "PUT", "Access-Control-Request-Headers": "content-type"}
+    ok = client.options("/api/settings", headers={"Origin": "tauri://localhost", **pre})
+    assert ok.status_code == 200 and ok.headers["access-control-allow-origin"] == "tauri://localhost"
+    bad = client.options("/api/settings", headers={"Origin": "https://evil.example", **pre})
+    assert "access-control-allow-origin" not in bad.headers
+    assert client.post("/api/scan", headers={"Origin": "tauri://localhost"}).status_code != 403
+    assert client.post("/api/scan", headers={"Origin": "tauri://evil"}).status_code == 403

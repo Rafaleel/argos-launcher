@@ -72,5 +72,4 @@ def no_installed_emulators(monkeypatch):
     """A scan auto-configures installed emulators: tests must not see the machine's Flatpaks or PATH."""
     from app.emulators import detect
 
-    detect.flatpak_apps.cache_clear()
     monkeypatch.setattr(detect, "candidates", lambda: [])

@@ -22,6 +22,8 @@ export type RaSettings = { user: string; has_key: boolean };
 export type RaSyncResult = { game_id: number; title: string; ok: boolean; message: string };
 export type PlatformTime = { platform: string | null; seconds: number };
 export type GameTime = { game_id: number; title: string; platform: string | null; seconds: number; sessions: number; last_played: string | null };
+export type JournalDay = { day: string; games: GameTime[] };
+export type JournalPage = { days: JournalDay[]; next_before: string | null };
 export type Period = { period: string; seconds: number };
 export type By = "day" | "week" | "month";
 
@@ -77,10 +79,19 @@ export type ScanResult = {
   files_removed: number;
   games: number;
   errors: string[];
+  emulators_configured: { platform: string; name: string }[];
 };
+export type EmulatorOption = { name: string; platforms: string[]; executable: string; args: string[] };
+export type DolphinRa = { enabled: boolean; user: string; logged_in: boolean; hardcore: boolean };
+
+export const inDesktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+// Served over http (the browser, or `tauri dev` loading Vite): same origin through Vite's proxy.
+// The built desktop app serves the UI from tauri://localhost and calls the backend port directly.
+const BASE = location.protocol.startsWith("http") ? "/api" : "http://127.0.0.1:8765/api";
+export const coverUrl = (id: number) => `${BASE}/games/${id}/cover`;
 
 async function call<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -102,6 +113,7 @@ export const api = {
   platforms: () => call<string[]>("/platforms"),
   emulators: () => call<Emulator[]>("/emulators"),
   saveEmulator: (e: Emulator) => call<Emulator>("/emulators", "PUT", e),
+  journal: (before: string | null) => call<JournalPage>(before ? `/stats/journal?before=${encodeURIComponent(before)}` : "/stats/journal"),
   statsGames: () => call<GameTime[]>("/stats/games"),
   statsPlatforms: () => call<PlatformTime[]>("/stats/platforms"),
   statsPeriods: (by: By) => call<Period[]>(`/stats/periods?by=${by}`),
@@ -122,5 +134,9 @@ export const api = {
   syncAllRa: () => call<RaSyncResult[]>("/ra/sync", "POST"),
   detectGameRa: (id: number) => call<{ found: boolean; ra_id: number | null; hash: string }>(`/games/${id}/ra/detect`, "POST"),
   detectAllRa: () => call<RaSyncResult[]>("/ra/detect", "POST"),
+  detectedEmulators: () => call<Record<string, EmulatorOption[]>>("/emulators/detected"),
+  dolphinRa: () => call<DolphinRa>("/dolphin/achievements"),
+  dolphinRaLogin: (user: string, password: string) => call<DolphinRa>("/dolphin/achievements/login", "POST", { user, password }),
+  dolphinRaLogout: () => call<DolphinRa>("/dolphin/achievements/login", "DELETE"),
   play: (id: number) => call<{ pid: number; session_id: number }>(`/games/${id}/play`, "POST"),
 };

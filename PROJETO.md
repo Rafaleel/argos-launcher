@@ -54,7 +54,24 @@ O sistema usa os sinais **que estiverem disponíveis** para cada jogo; nenhum é
 | Modelos locais | Ollama (LLM e visão) |
 | Fusão de sinais | numpy puro (implementar o filtro à mão) |
 
-**Decisão:** começar como aplicação web local (FastAPI + React no navegador). Empacotar com Tauri só depois que as fases 1 e 2 estiverem funcionando.
+**Decisão:** começar como aplicação web local (FastAPI + React no navegador). Empacotar com Tauri só depois que as fases 1 e 2 estiverem funcionando. **Feito:** o app desktop (Tauri 2, `frontend/src-tauri`) abre a interface e inicia o backend sozinho na porta 8765 (usa `backend/.venv` ou `uv run`); ao fechar a janela, o backend é encerrado com SIGTERM. Se já houver um backend nessa porta, ele é reaproveitado (um segundo backend fecharia as sessões abertas do primeiro). Limite: o backend roda a partir do código-fonte; um pacote instalável precisa do backend embutido como sidecar, o que ainda não foi feito.
+
+### Como rodar
+
+- App desktop: `cd frontend && pnpm tauri dev` (desenvolvimento) ou `pnpm tauri build --no-bundle` e abrir `src-tauri/target/release/argos-launcher`.
+- No navegador: `cd backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8765` e `cd frontend && pnpm dev` (http://127.0.0.1:5173).
+
+### Interface
+
+O Acervo destaca a última sessão disponível. Clique numa capa ou use as setas para folhear os títulos visíveis em grade ou lista. O destaque acompanha a seleção e apresenta cada mídia como caixa e disco, cartucho, caixa portátil ou capa simples. O tema escuro usa superfícies foscas e vermelho profundo. O claro usa marfim e retícula vermelha. A escolha fica salva localmente.
+
+Discos da mesma edição e plataforma aparecem juntos na estante. A ficha permite escolher o disco, ver o tempo dele e jogá-lo. O indicador de conquistas aparece após sincronização. Controles de vínculo, vídeo e texturas abrem sob demanda. Arquivos não identificados têm filtro próprio.
+
+Atividade abre com o diário, que registra cada sessão na data local em que começou. O diário agrupa as sessões de cada título no mesmo dia, incluindo os vários discos da edição, e permite folhear dias anteriores. Os gráficos abaixo continuam dividindo o tempo à meia-noite. Oficina reúne emuladores, controles e pastas. No desktop, pastas e pacotes usam o seletor nativo. No navegador, o usuário informa o caminho.
+
+### Capas
+
+Vêm dos repositórios libretro-thumbnails no GitHub (`raw.githubusercontent.com/libretro-thumbnails/<plataforma>/master/Named_Boxarts/<título>.png`), que usam os mesmos nomes dos DATs; para jogos em vários discos também é tentado o nome sem "(Disc N)". Baixadas uma vez e guardadas ao lado do banco (`covers/`). Só a plataforma e o título são enviados. O endereço `thumbnails.libretro.com` devolveu 404 para todos os jogos testados, por isso não é usado.
 
 ## 4. Arquitetura
 

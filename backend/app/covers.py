@@ -19,6 +19,7 @@ BASE = "https://raw.githubusercontent.com/libretro-thumbnails/"
 MAX_BYTES = 5 * 1024 * 1024
 RETRY_MISSING = 7 * 24 * 3600  # a cover that did not exist is asked for again after a week
 PNG = b"\x89PNG\r\n\x1a\n"
+PNG_END = b"IEND\xaeB`\x82"  # last chunk of every PNG: a cut download lacks it
 DISC = re.compile(r"\s*\(Disc \d+\)", re.I)
 
 
@@ -48,7 +49,11 @@ def _download(url: str) -> bytes | None:
         raise OSError(f"HTTP {exc.code}") from None
     except urllib.error.URLError as exc:
         raise OSError(str(exc.reason)) from None
-    return data if len(data) <= MAX_BYTES and data.startswith(PNG) else None
+    if len(data) > MAX_BYTES or not data.startswith(PNG):
+        return None  # not a cover we want
+    if not data.endswith(PNG_END):
+        raise OSError("download cortado")  # a dropped connection: try again next time, remember nothing
+    return data
 
 
 def _write(path: Path, data: bytes) -> None:

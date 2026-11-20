@@ -174,6 +174,8 @@ def login_token(user: str, password: str) -> tuple[str, str]:
     try:
         data = get_json(DOREQUEST, data=urllib.parse.urlencode({"r": "login2", "u": user, "p": password}).encode())
     except RAError as exc:
+        if "recusou" in str(exc):  # a 401/403 here means a wrong user or password, not the API key
+            raise RAError("Login recusado: confira o usuário e a senha do RetroAchievements.") from None
         raise RAError(str(exc).replace(password, "•••")) from None
     if not isinstance(data, dict) or data.get("Success") is not True:
         err = data.get("Error") if isinstance(data, dict) else None
