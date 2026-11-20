@@ -18,6 +18,7 @@ from app.collectors.base import store_signal
 from app.collectors.ra_store import get_credentials, get_ra_id
 
 BASE = "https://retroachievements.org/API/"
+DOREQUEST = "https://retroachievements.org/dorequest.php"  # what emulators ask for a game id; no key needed
 USER_AGENT = "ArgosLauncher/0.1"
 MAX_BYTES = 8 * 1024 * 1024  # the biggest sets have a few hundred achievements; this is far above that
 TOTAL_TIMEOUT = 30.0  # the whole answer, not each socket operation: a trickling server must not hold the sync forever
@@ -38,8 +39,11 @@ def _reject_constant(name):
     raise ValueError(name)  # NaN / Infinity are not JSON; they would poison the arithmetic later
 
 
-def get_json(url: str, timeout: float = 15.0):
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+def get_json(url: str, timeout: float = 15.0, data: bytes | None = None):
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    if data is not None:
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+    req = urllib.request.Request(url, data=data, headers=headers)
     deadline = time.monotonic() + TOTAL_TIMEOUT
     try:
         with urllib.request.build_opener(_NoRedirect).open(req, timeout=timeout) as resp:
@@ -150,6 +154,19 @@ def fetch_progress(user: str, key: str, ra_id: int) -> dict:
         raise RAError(str(exc).replace(key, "•••")) from None
     except (TypeError, ValueError, OverflowError, AttributeError, KeyError, RecursionError):
         raise RAError("Resposta inesperada do RetroAchievements.") from None
+
+
+def resolve_game_id(md5: str) -> int | None:
+    """Ask RetroAchievements which game a hash belongs to (what an emulator does). Sends only the hash."""
+    if not re.fullmatch(r"[0-9a-f]{32}", md5):
+        raise RAError("Hash inválido.")
+    data = get_json(DOREQUEST, data=urllib.parse.urlencode({"r": "gameid", "m": md5}).encode())
+    if not isinstance(data, dict):
+        raise RAError("Resposta inesperada do RetroAchievements.")
+    if data.get("Success") is False:
+        raise RAError("O RetroAchievements não conseguiu procurar esse disco.")
+    game = _int(data.get("GameID"))
+    return game or None  # 0 means "unknown hash"
 
 
 class RetroAchievementsCollector:

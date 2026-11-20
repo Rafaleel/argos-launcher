@@ -27,6 +27,10 @@ export function RaPanel({ notify, onSynced }: { notify: Notify; onSynced: () => 
     api.saveRaSettings(user.trim(), "")
       .then((s) => { setHasKey(s.has_key); setKey(""); notify("Chave removida."); })
       .catch((e) => notify(e.message, true));
+  const detectAll = () => {
+    setBusy(true);
+    api.detectAllRa().then((r) => { setResults(r); onSynced(); }).catch((e) => notify(e.message, true)).finally(() => setBusy(false));
+  };
   const syncAll = () => {
     setBusy(true);
     api.syncAllRa().then((r) => { setResults(r); onSynced(); }).catch((e) => notify(e.message, true)).finally(() => setBusy(false));
@@ -53,6 +57,7 @@ export function RaPanel({ notify, onSynced }: { notify: Notify; onSynced: () => 
           {hasKey && <div><button onClick={removeKey}>Remover chave</button></div>}
         </div>
         <p>
+          <button onClick={detectAll} disabled={busy}>{busy ? "Trabalhando…" : "Detectar os IDs dos jogos automaticamente"}</button>{" "}
           <button onClick={syncAll} disabled={busy || !hasKey}>{busy ? "Sincronizando…" : "Sincronizar todos os jogos vinculados"}</button>
         </p>
         {results && (
@@ -83,6 +88,17 @@ export function GameAchievements({ gameId, notify, onSynced }: { gameId: number;
       // a new or removed link must not keep showing the old game's result
       return api.gameRa(gameId).then((g) => { setSummary(g.summary); onSynced(); });
     }).catch((e) => notify(e.message, true));
+  const detect = () => {
+    setBusy(true);
+    api.detectGameRa(gameId)
+      .then((r) => {
+        if (!r.found) { notify("O RetroAchievements não reconheceu este disco. Informe o ID à mão.", true); return; }
+        setLinked(r.ra_id); setRef(String(r.ra_id));
+        notify(`Detectado: jogo ${r.ra_id} no RetroAchievements. Confira na página do site que é a versão certa.`);
+        return api.gameRa(gameId).then((g) => { setSummary(g.summary); onSynced(); });
+      })
+      .catch((e) => notify(e.message, true)).finally(() => setBusy(false));
+  };
   const sync = () => {
     setBusy(true);
     api.syncGameRa(gameId).then((s) => { setSummary(s); notify(`Conquistas: ${achievementText(s)}.`); onSynced(); })
@@ -97,6 +113,7 @@ export function GameAchievements({ gameId, notify, onSynced }: { gameId: number;
           <label>ID do jogo no RetroAchievements ou endereço da página dele</label>
           <input aria-label="ID do jogo no RetroAchievements" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="1234 ou retroachievements.org/game/1234" />
         </div>
+        <button onClick={detect} disabled={busy}>Detectar automaticamente</button>
         <button onClick={link}>Salvar vínculo</button>
         <button onClick={sync} disabled={busy || linked === null}>{busy ? "Sincronizando…" : "Sincronizar"}</button>
       </div>
@@ -105,7 +122,8 @@ export function GameAchievements({ gameId, notify, onSynced }: { gameId: number;
       </p>
       <p className="muted">
         Isso mede conquistas ganhas, não o quanto da história você já jogou: esse é o trabalho da fusão de sinais, mais adiante.
-        O ID aparece no endereço da página do jogo no site. Confira que a página é a da versão certa (por exemplo, GameCube).
+        "Detectar automaticamente" calcula o hash do disco e pergunta ao RetroAchievements qual jogo é (só o hash é enviado, sem
+        usuário nem chave; hoje só para GameCube). O ID também aparece no endereço da página do jogo no site. Confira que a página é a da versão certa (por exemplo, GameCube).
       </p>
     </div>
   );
