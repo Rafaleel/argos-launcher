@@ -3,9 +3,10 @@ import os
 import sqlite3
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api import Conn
+from app.collectors.retroachievements import RAError, login_token
 from app.emulators import dolphin, store
 
 router = APIRouter(prefix="/api")
@@ -13,6 +14,11 @@ router = APIRouter(prefix="/api")
 
 class Archive(BaseModel):
     archive: str
+
+
+class RaLogin(BaseModel):
+    user: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
 
 
 class Controls(BaseModel):
@@ -147,3 +153,32 @@ def put_controls(body: Controls, conn: sqlite3.Connection = Conn) -> dict:
     except OSError as exc:
         raise HTTPException(500, f"Não foi possível gravar a configuração dos controles: {exc}") from exc
     return {"device": dolphin.read_pad1_device(install)}
+
+
+@router.get("/dolphin/achievements")
+def ra_login_status(conn: sqlite3.Connection = Conn) -> dict:
+    return dolphin.ra_status(_need_install(conn))
+
+
+@router.post("/dolphin/achievements/login")
+def ra_login(body: RaLogin, conn: sqlite3.Connection = Conn) -> dict:
+    """Log Dolphin in with the user's password, used once and never stored."""
+    install = _need_install(conn)
+    _not_running()  # Dolphin rewrites its config on exit and would drop ours
+    try:
+        user, token = login_token(body.user.strip(), body.password)
+    except RAError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    try:
+        dolphin.write_ra_login(install, user, token)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(500, f"Não foi possível gravar o login no Dolphin: {exc}") from exc
+    return dolphin.ra_status(install)
+
+
+@router.delete("/dolphin/achievements/login")
+def ra_logout(conn: sqlite3.Connection = Conn) -> dict:
+    install = _need_install(conn)
+    _not_running()
+    dolphin.write_ra_login(install, "", None)
+    return dolphin.ra_status(install)
