@@ -75,6 +75,10 @@ class VideoSettings(BaseModel):
     vsync: bool | None = None
     hires_textures: bool | None = None
     prefetch_textures: bool | None = None
+    # Main-config options: passed with -C (verified to work, unlike -C GFX.*).
+    render_to_main: bool | None = None  # documented workaround for keyboard input dying after a focus loss
+    background_input: bool | None = None  # same, but the game may then react to keys typed elsewhere
+    keep_on_top: bool | None = None
 
 
 # setting -> (ini section, key) in GameSettings/<ID>.ini
@@ -84,6 +88,13 @@ INI_KEYS = {
     "prefetch_textures": ("Video_Settings", "CacheHiresTextures"),
     "anisotropy": ("Video_Enhancements", "MaxAnisotropy"),
     "vsync": ("Video_Hardware", "VSync"),
+}
+
+
+MAIN_KEYS = {
+    "render_to_main": "Dolphin.Display.RenderToMain",
+    "background_input": "Dolphin.Input.BackgroundInput",
+    "keep_on_top": "Dolphin.Display.KeepWindowOnTop",
 }
 
 
@@ -185,6 +196,9 @@ def launch_plan(install: Install, args: list[str], settings: dict) -> tuple[list
             env.update(NVIDIA_ENV)
     if settings.get("backend"):
         args += ["-v", settings["backend"]]
+    for name, key in MAIN_KEYS.items():
+        if name in settings:
+            args += ["-C", f"{key}={_fmt(settings[name])}"]
     return args, env
 
 
