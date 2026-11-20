@@ -128,6 +128,12 @@ O Argos configura o Dolphin sem abrir a interface dele. Vale só para emuladores
   - A lista de placas vem do `lspci` (lido uma vez e guardado: pode levar uns 2 s e acordar a placa dedicada na primeira consulta).
   - Só o Dolphin tem adaptador; a estrutura permite acrescentar o RetroArch depois.
 
+## Detecção de emuladores
+
+- Depois de cada scan, toda plataforma da biblioteca que ainda não tem emulador recebe o melhor instalado; uma escolha feita pelo usuário nunca é trocada. `GET /api/emulators/detected` lista as opções de cada plataforma.
+- Dolphin (Flatpak ou nativo): `-b -e {rom}`, verificado nesta máquina. RetroArch (Flatpak ou nativo): um candidato por core instalado, com as plataformas tiradas do campo `database` do `.info` do core, que usa os mesmos nomes dos DATs No-Intro/Redump; argumentos `-L <core> {rom}`. Emuladores dedicados vêm antes de um core do RetroArch.
+- Não incluídos por enquanto (argumentos não verificados): DuckStation, PCSX2 e outros. Entram como uma linha nova em `emulators/detect.py`.
+
 ## Fase 3: conquistas do RetroAchievements
 
 Primeiro sinal de progresso: o `Collector` do RetroAchievements grava um sinal `achievements` por sincronização (os sinais antigos ficam, para reprocessar depois). A tela mostra "ganhas de total (%)" por jogo, e há "Sincronizar" por jogo e para todos os vinculados.
