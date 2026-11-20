@@ -32,7 +32,7 @@ def validate_executable(executable: str) -> None:
         raise LaunchError("o caminho do emulador não é um arquivo executável")
 
 
-def launch(executable: str, args: list[str], paths: list[str]) -> int:
+def launch(executable: str, args: list[str], paths: list[str], env: dict[str, str] | None = None) -> int:
     validate_executable(executable)
     # Files on an unmounted drive are still in the library but cannot be played.
     present = [p for p in paths if os.path.exists(p)]
@@ -43,6 +43,7 @@ def launch(executable: str, args: list[str], paths: list[str]) -> int:
         proc = subprocess.Popen(
             argv,
             shell=False,
+            env={**os.environ, **env} if env else None,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

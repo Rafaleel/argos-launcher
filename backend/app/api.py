@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.db import connect
+from app.emulators import dolphin, store
 from app.launcher.launch import FilesMissing, LaunchError, launch, validate_executable
 from app.scanner.scan import scan
 from app.sessions.tracker import AlreadyPlaying, start_session
@@ -89,23 +90,27 @@ def run_scan(conn: sqlite3.Connection = Conn) -> dict:
 def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
     rows = conn.execute(
         """SELECT g.id, g.title, g.platform, g.identified,
-                  (e.id IS NOT NULL) AS has_emulator,
+                  (e.id IS NOT NULL) AS has_emulator, e.executable AS emu_exe, e.args AS emu_args,
                   EXISTS (SELECT 1 FROM sessions s WHERE s.game_id = g.id AND s.ended_at IS NULL) AS playing
            FROM games g LEFT JOIN emulators e ON e.platform = g.platform
            WHERE EXISTS (SELECT 1 FROM files f WHERE f.game_id = g.id)
            ORDER BY g.platform IS NULL, g.platform, g.title"""
     ).fetchall()
     time = play_time.per_game(conn)
-    return [
-        {
-            **dict(r),
-            "identified": bool(r["identified"]),
-            "has_emulator": bool(r["has_emulator"]),
-            "playing": bool(r["playing"]),
-            "seconds_played": time.get(r["id"], {}).get("seconds", 0),
-        }
-        for r in rows
-    ]
+    result = []
+    for r in rows:
+        game = {k: v for k, v in dict(r).items() if k not in ("emu_exe", "emu_args")}
+        result.append(
+            {
+                **game,
+                "identified": bool(r["identified"]),
+                "has_emulator": bool(r["has_emulator"]),
+                "playing": bool(r["playing"]),
+                "seconds_played": time.get(r["id"], {}).get("seconds", 0),
+                "dolphin": bool(r["emu_exe"]) and dolphin.detect(r["emu_exe"], json.loads(r["emu_args"])) is not None,
+            }
+        )
+    return result
 
 
 @router.get("/platforms")
@@ -151,9 +156,28 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     if emu is None:
         raise HTTPException(409, f"Nenhum emulador configurado para {game['platform']}")
     paths = [r["path"] for r in conn.execute("SELECT path FROM files WHERE game_id = ?", (game_id,))]
+    args, env = json.loads(emu["args"]), {}
+    install = dolphin.detect(emu["executable"], args)
+    if install:
+        # Check first: a refused play must not rewrite the INI of a game that is already open.
+        if conn.execute("SELECT 1 FROM sessions WHERE game_id = ? AND ended_at IS NULL", (game_id,)).fetchone():
+            raise HTTPException(409, "Este jogo já está aberto")
+        settings = store.effective_for(conn, game_id)
+        game_code = next((c for p in paths if os.path.exists(p) and (c := dolphin.read_game_id(p))), None)
+        if dolphin.install_running() and dolphin.JOB["game_id"] == game_code:
+            raise HTTPException(409, "O pacote de texturas deste jogo ainda está sendo instalado")
+        try:
+            if game_code:
+                written = dolphin.apply_game_settings(install, game_code, settings, store.get_written(conn, game_id))
+                store.set_written(conn, game_id, written)
+            args, env = dolphin.launch_plan(install, args, settings)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(500, f"Não foi possível gravar a configuração do Dolphin: {exc}") from exc
     try:
         pid, session_id = start_session(
-            conn, game_id, lambda: launch(emu["executable"], json.loads(emu["args"]), paths)
+            conn, game_id, lambda: launch(emu["executable"], args, paths, env)
         )
     except AlreadyPlaying:
         raise HTTPException(409, "Este jogo já está aberto") from None

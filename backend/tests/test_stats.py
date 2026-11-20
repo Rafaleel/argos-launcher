@@ -8,13 +8,15 @@ from tests.test_sessions import add_game
 
 
 @pytest.fixture
-def tz(monkeypatch):
+def tz():
+    mp = pytest.MonkeyPatch()  # its own instance: undo() must not touch the conftest isolation
+
     def set_tz(name):
-        monkeypatch.setenv("TZ", name)
+        mp.setenv("TZ", name)
         time.tzset()
 
     yield set_tz
-    monkeypatch.undo()
+    mp.undo()
     time.tzset()
 
 
