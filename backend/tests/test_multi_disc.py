@@ -137,3 +137,50 @@ def test_bulk_detect_links_the_edition_from_one_disc(client, tmp_path, monkeypat
     assert f"{CVX} (Disc 2)" not in titles and f"{CVX} (Disc 1)" in titles  # disc 2 came with disc 1
     assert client.get(f"/api/games/{d2}/ra").json()["ra_id"] == 1234
     assert len(looked_up) == len(results)
+
+
+def test_a_missing_chosen_disc_never_boots_another_one(client, tmp_path):
+    conn, ids = lib(client, tmp_path, {f"{CVX} (Disc 3).iso": (GC, b"GCDE08" + b"\x05" * 200)})
+    out = native_dolphin(client, tmp_path)
+    (tmp_path / "roms" / f"{CVX} (Disc 1).iso").unlink()
+    r = client.post(f"/api/games/{ids[f'{CVX} (Disc 1)']}/play")
+    assert r.status_code == 409 and not out.exists()  # files missing, not disc 2 booting as disc 1
+
+
+def test_three_discs_rotate_from_the_chosen_one(client, tmp_path):
+    conn, ids = lib(client, tmp_path, {f"{CVX} (Disc 3).iso": (GC, b"GCDE08" + b"\x05" * 200)})
+    out = native_dolphin(client, tmp_path)
+    assert client.post(f"/api/games/{ids[f'{CVX} (Disc 2)']}/play").status_code == 200
+    argv = wait_for(out)["argv"]
+    names = [Path(l).name for l in Path(argv[argv.index("-e") + 1]).read_text().splitlines()]
+    assert names == [f"{CVX} (Disc 2).iso", f"{CVX} (Disc 3).iso", f"{CVX} (Disc 1).iso"]
+
+
+def test_two_discs_clicked_at_once_open_only_one(client, tmp_path, monkeypatch):
+    from app.sessions import tracker
+    conn, ids = lib(client, tmp_path)
+    d1, d2 = ids[f"{CVX} (Disc 1)"], ids[f"{CVX} (Disc 2)"]
+    conn.execute("INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (?, '2026-11-20T10:00:00Z', '2026-11-20T10:00:00Z')", (d1,))
+    conn.commit()  # disc 1 open
+    with pytest.raises(tracker.AlreadyPlaying):
+        tracker.start_session(conn, d2, lambda: 999998, (d1,))  # the check holds under the play lock
+
+
+def test_sync_all_still_syncs_a_disc_linked_to_another_set(client, tmp_path, monkeypatch):
+    conn, ids = lib(client, tmp_path)
+    d1, d2 = ids[f"{CVX} (Disc 1)"], ids[f"{CVX} (Disc 2)"]
+    calls = []
+    monkeypatch.setattr(ra, "fetch_progress", lambda u, k, ra_id: calls.append(ra_id) or {
+        "ra_id": ra_id, "title": "x", "console": "", "total": 1, "earned": 0, "earned_hardcore": 0,
+        "points_total": 0, "points_earned": 0, "earned_list": []})
+    client.put("/api/ra/settings", json={"user": "u", "key": "KEY123"})
+    conn.execute("INSERT INTO ra_games (game_id, ra_id) VALUES (?, 100), (?, 200)", (d1, d2))
+    conn.commit()
+    client.post("/api/ra/sync")
+    assert sorted(calls) == [100, 200]
+
+
+def test_backend_grouping_matches_the_frontend_on_odd_titles(client, tmp_path):
+    from app.editions import DISC, disc_number
+    assert disc_number("Game (Disc ２)") == 0  # fullwidth digit: not a disc, like JS \d
+    assert DISC.sub("", "Game (Disc 1) (Disc 2)", count=1).strip() == "Game (Disc 2)"
