@@ -264,7 +264,8 @@ def test_kernel_fallback_finds_pads_by_their_buttons_not_by_js(tmp_path, monkeyp
 
 
 def test_sdl_names_win_and_identical_pads_are_numbered_like_dolphin(monkeypatch):
-    monkeypatch.setattr(dolphin, "sdl_gamepads", lambda: ["Xbox Series X Controller", "PS5 Controller", "Xbox Series X Controller"])
+    monkeypatch.setattr(dolphin, "sdl_gamepads", lambda: [("Xbox Series X Controller", "Xbox Wireless Controller"), ("PS5 Controller", "PS5 Controller"), ("Xbox Series X Controller", "Xbox Wireless Controller")])
+    assert [c["name"] for c in dolphin.controller_candidates()][0] == "Xbox Wireless Controller"  # shown name is the hardware one
     assert [c["device"] for c in dolphin.controller_candidates()] == [
         "SDL/0/Xbox Series X Controller", "SDL/0/PS5 Controller", "SDL/1/Xbox Series X Controller"]
     assert all(c["source"] == "sdl" for c in dolphin.controller_candidates())
