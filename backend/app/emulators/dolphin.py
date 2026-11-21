@@ -258,8 +258,9 @@ SDL_INIT_GAMEPAD = 0x2000
 _sdl_lock = threading.Lock()
 
 
-def sdl_gamepads() -> list[str] | None:
-    """Gamepad names as SDL3 gives them, which is how Dolphin's SDL backend names devices.
+def sdl_gamepads() -> list[tuple[str, str]] | None:
+    """(Dolphin name, hardware name) per gamepad. Dolphin's SDL backend names devices with the gamepad
+    mapping name ("Xbox 360 Controller"); the joystick name is what the system shows ("Xbox Wireless Controller").
 
     None when SDL3 is not installed. The host's SDL may differ from the copy inside Dolphin,
     but names come from the same controller database, so they match for common pads."""
@@ -270,6 +271,7 @@ def sdl_gamepads() -> list[str] | None:
     sdl.SDL_Init.argtypes, sdl.SDL_Init.restype = [ctypes.c_uint32], ctypes.c_bool
     sdl.SDL_GetGamepads.argtypes, sdl.SDL_GetGamepads.restype = [ctypes.POINTER(ctypes.c_int)], ctypes.POINTER(ctypes.c_uint32)
     sdl.SDL_GetGamepadNameForID.argtypes, sdl.SDL_GetGamepadNameForID.restype = [ctypes.c_uint32], ctypes.c_char_p
+    sdl.SDL_GetJoystickNameForID.argtypes, sdl.SDL_GetJoystickNameForID.restype = [ctypes.c_uint32], ctypes.c_char_p
     sdl.SDL_QuitSubSystem.argtypes = [ctypes.c_uint32]
     with _sdl_lock:  # SDL init is reference counted per process; keep one enumeration at a time
         if not sdl.SDL_Init(SDL_INIT_GAMEPAD):
@@ -279,9 +281,12 @@ def sdl_gamepads() -> list[str] | None:
             ids = sdl.SDL_GetGamepads(ctypes.byref(count))
             if not ids:
                 return []
-            names = [(sdl.SDL_GetGamepadNameForID(ids[k]) or b"").decode("utf-8", "replace").strip() for k in range(count.value)]
+            def name(fn, k):
+                return (fn(ids[k]) or b"").decode("utf-8", "replace").strip()
+
+            pads = [(name(sdl.SDL_GetGamepadNameForID, k), name(sdl.SDL_GetJoystickNameForID, k)) for k in range(count.value)]
             sdl.SDL_free(ids)
-            return [n for n in names if n]
+            return [(n, h or n) for n, h in pads if n]
         finally:
             sdl.SDL_QuitSubSystem(SDL_INIT_GAMEPAD)
 
@@ -301,12 +306,12 @@ def _kernel_gamepads(text: str) -> list[str]:
     return names
 
 
-def _devices(names: list[str], source: str) -> list[dict]:
+def _devices(names: list[tuple[str, str]], source: str) -> list[dict]:
     """Dolphin numbers devices with the same name from 0: two identical pads are SDL/0/X and SDL/1/X."""
     seen: dict[str, int] = {}
     out = []
-    for n in names:
-        out.append({"name": n, "device": f"SDL/{seen.get(n, 0)}/{n}", "source": source})
+    for n, label in names:
+        out.append({"name": label, "device": f"SDL/{seen.get(n, 0)}/{n}", "source": source})
         seen[n] = seen.get(n, 0) + 1
     return out
 
@@ -321,7 +326,7 @@ def controller_candidates() -> list[dict]:
     except OSError:
         return []
     # shortcut: without SDL3 the kernel name is only a hint; SDL often names the pad differently
-    return _devices(_kernel_gamepads(text), "kernel")
+    return _devices([(n, n) for n in _kernel_gamepads(text)], "kernel")
 
 
 # ---------------------------------------------------------------- texture packs
