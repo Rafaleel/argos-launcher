@@ -24,6 +24,19 @@ Run both checks before calling work done.
 - Never commit to `main`. One branch per piece of work (`feat/...`, `fix/...`, `docs/...`, `chore/...`), English slugs. Follow-up requests on the same piece reuse the branch.
 - Small local commits. Push, PR and merge only with the owner's explicit approval.
 
+## Worktrees (several agents work at once)
+
+Claude, Codex and Antigravity share this repository. One folder has one active branch, so never work in
+the main folder (`game-emulator/`) and never run `git checkout`/`git switch` there.
+
+- Each agent works in its own worktree, one per branch, next to the main folder:
+  `git worktree add ../argos-<agent> -b <type>/<slug>` (from the main folder; use `<agent>` = `claude`, `codex` or `antigravity`).
+  To continue an existing branch: `git worktree add ../argos-<agent> <branch>`.
+- A branch can be checked out in only one worktree. Never touch another agent's worktree or branch.
+- A new worktree has no `backend/.venv` or `frontend/node_modules` (gitignored): run `uv sync` in `backend/` and `pnpm install` in `frontend/`.
+- Do not run the backend (port 8765) or the desktop app while another agent might be running one; a second backend closes the first one's open sessions. Tests are safe to run in parallel.
+- When the work is merged: `git worktree remove ../argos-<agent>`.
+
 ## Rules
 
 - Everything runs locally; no mandatory cloud service. External APIs (RetroAchievements) are optional.
