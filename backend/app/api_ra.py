@@ -88,6 +88,8 @@ def get_milestones(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     ra_id = ra_store.get_ra_id(conn, game_id)
     items = milestones.load(conn, game_id) if ra_id else []
     problem = ram_milestones.PROBLEMS.get(game_id)
+    if not items and not problem and ra_id and milestones.legacy(conn, game_id):
+        problem = "Os marcos deste jogo serão remontados na próxima vez que você jogar pelo Argos."
     if not items and not problem or ra_id is None:
         return {"supported": False}
     signal = latest_signal(conn, game_id, "milestones")

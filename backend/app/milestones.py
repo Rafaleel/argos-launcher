@@ -75,6 +75,11 @@ def load(conn: sqlite3.Connection, game_id: int) -> list[dict]:
              "size": r["size"], "value": r["value"], "gates": json.loads(r["gates"] or "[]")} for r in rows]
 
 
+def legacy(conn: sqlite3.Connection, game_id: int) -> bool:
+    """True when the game only has rows from before scenarios existed (`load` ignores them until a rebuild)."""
+    return conn.execute("SELECT 1 FROM milestones WHERE game_id = ? AND scenario IS NULL", (game_id,)).fetchone() is not None
+
+
 def groups(conn: sqlite3.Connection, game_id: int) -> list[dict]:
     rows = conn.execute("SELECT scenario, undetectable FROM milestone_groups WHERE game_id = ? ORDER BY position", (game_id,))
     return [{"scenario": r["scenario"], "undetectable": r["undetectable"]} for r in rows]

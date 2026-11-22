@@ -93,3 +93,10 @@ what RA already says about it, and Argos should read them live from Dolphin's RA
   flag) was discussed and deliberately not built, to avoid inventing milestones.
 - The type is chosen by the set's volunteer authors and is optional; even in RE2 70 of 172 achievements are untyped.
   Coverage on a second game is unknown until one is linked and checked.
+- A rich presence line with fixed text can describe a state where the player is in play (RE2: `0xT163E09=1`,
+  "special weapons", an unlockable the player may use legitimately; `0xX1688FC=hFFFFFF00`, the cheater branch). The
+  gate treats every fixed line as "not playing", so those sessions read no milestones. On another game this could
+  close the gate during real play: the game looks supported, reads nothing, and shows no `problem`.
+- Gates also accept "must differ" (`"ne"`) for wide values; other comparators (`!=`, `<`, `>`) in the script are not understood.
+- RA types two RE2 side events as `progression` (ids 439337 and 439550, which the hand-written story skipped), so
+  Leon A has 14 milestones instead of 12. Excluding them would need a per-game override (hand-written data).

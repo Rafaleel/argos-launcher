@@ -51,3 +51,13 @@ def test_groups_and_the_active_scenario_come_from_the_latest_signal_of_the_linke
     assert (leon["scenario"], leon["total"], leon["reached"], leon["undetectable"]) == ("Leon A", 3, 2, 1)
     assert (claire["scenario"], claire["total"], claire["reached"], claire["undetectable"]) == ("Claire A", 1, None, 0)  # not read now
     ram_milestones.PROBLEMS.clear()
+
+
+def test_a_game_with_rows_from_before_scenarios_says_they_will_be_rebuilt():
+    ram_milestones.PROBLEMS.clear()
+    conn = connect()
+    gid = make_game(conn, 3176)
+    conn.execute("INSERT INTO milestones (game_id, position, name, address, size, value, gates) VALUES (?, 0, 'Old', 16, 'N', 1, '[]')", (gid,))
+    conn.commit()
+    body = TestClient(app, base_url="http://127.0.0.1").get(f"/api/games/{gid}/milestones").json()
+    assert body["supported"] and body["total"] == 0 and "remontados" in body["problem"]  # the tab stays, with the reason
