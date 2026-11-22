@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import covers
-from app.collectors import presence
+from app.collectors import presence, ram_milestones, ra_store
 from app.config import db_path
 from app.editions import edition_ids
 from app.db import connect
@@ -244,6 +244,7 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     ).fetchone():
         raise HTTPException(409, "Outro disco deste jogo já está aberto")
     args, env = json.loads(emu["args"]), {}
+    game_code = None
     install = dolphin.detect(emu["executable"], args)
     if install:
         # Check first: a refused play must not rewrite the INI of a game that is already open.
@@ -281,6 +282,8 @@ def play(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
         raise HTTPException(500, str(exc)) from exc
     started = conn.execute("SELECT started_at FROM sessions WHERE id = ?", (session_id,)).fetchone()["started_at"]
     presence.start(conn, game_id, session_id, datetime.fromisoformat(started.replace("Z", "+00:00")))
+    if install:
+        ram_milestones.start(conn, game_id, session_id, ra_store.get_ra_id(conn, game_id), game_code, install)
     return {"pid": pid, "session_id": session_id}
 
 

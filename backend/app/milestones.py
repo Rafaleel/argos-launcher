@@ -10,17 +10,18 @@ from app.collectors.ra_flags import Flag, Operand, core_conditions, milestone_fl
 _BYTE_EQUALS = re.compile(r"^0xH([0-9a-fA-F]+)=(\d+)$")
 
 
-def build(patch: dict, prefix: str) -> list[dict]:
+def build(patch: dict, prefix: str, skip: frozenset[int] = frozenset()) -> list[dict]:
     """Milestones from the achievements whose description starts with `prefix` (e.g. "[Leon A]"), in the
     order the server lists them (`patch` has no DisplayOrder; for RE2 that order follows the story). Several achievements can share one flag (the scenario's end); the first one names it.
 
     A milestone counts only while its `gates` hold: the plain byte checks every selected rule has in
     common, which in Resident Evil 2 is the scenario in play (0 = Leon A).
+    `skip`: achievement ids that are optional side events, not part of the story.
     shortcut: "common byte check = game mode" is a guess that fits RE2; confirm it on the next game."""
     picked = []
     for a in patch["Achievements"]:
         rule = a.get("MemAddr", "")
-        if not str(a.get("Description", "")).startswith(prefix) or not isinstance(rule, str):
+        if a["ID"] in skip or not str(a.get("Description", "")).startswith(prefix) or not isinstance(rule, str):
             continue
         flag = milestone_flag(rule)
         if flag:
