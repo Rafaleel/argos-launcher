@@ -8,8 +8,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
 
+from app import milestones
 from app.api import Conn
-from app.collectors import ra_store
+from app.collectors import ra_store, ram_milestones
 from app.collectors.base import latest_signal, store_signal
 from app.editions import edition_ids
 from app.collectors.ra_hash import HASHERS
@@ -59,6 +60,24 @@ def get_game_ra(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     _game(conn, game_id)
     ra_id = ra_store.get_ra_id(conn, game_id)
     return {"ra_id": ra_id, "summary": current_summary(conn, game_id, ra_id)}
+
+
+@router.get("/games/{game_id}/milestones")
+def get_milestones(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
+    """Story milestones of a game read from the emulator's RAM: which are reached (from the latest signal),
+    and why the reader cannot work if it cannot. `supported` is false for games without a hand-picked story."""
+    _game(conn, game_id)
+    ra_id = ra_store.get_ra_id(conn, game_id)
+    if ra_id not in ram_milestones.STORIES:
+        return {"supported": False}
+    items = milestones.load(conn, game_id)
+    signal = latest_signal(conn, game_id, "milestones")
+    done = signal.get("reached") if signal and signal.get("ra_id") == ra_id else None
+    done = set(done) if isinstance(done, list) else set()
+    return {"supported": True, "total": len(items), "reached": sum(m["name"] in done for m in items),
+            "items": [{"name": m["name"], "reached": m["name"] in done} for m in items],
+            "read_at": signal["synced_at"] if signal and signal.get("ra_id") == ra_id else None,
+            "problem": ram_milestones.PROBLEMS.get(game_id)}
 
 
 @router.put("/games/{game_id}/ra")

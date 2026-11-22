@@ -134,3 +134,43 @@ def test_the_title_screen_does_not_store_an_empty_set_after_progress(monkeypatch
     mem = FakeMem(conn, sid, [ram(), ram(), ram(marvin=1), ram(marvin=1), ram(playing=False), ram(playing=False)])  # the first image is skipped by the tick
     rows = run(conn, sid, mem, monkeypatch)
     assert [r["reached"] for r in rows] == [[], ["Marvin"]]  # nothing after the quit; no false regression
+
+
+def test_problems_are_recorded_and_cleared(monkeypatch, tmp_path):
+    conn, sid = setup(monkeypatch)
+    ram_milestones.PROBLEMS.clear()
+    install = dolphin.Install(False, tmp_path, tmp_path)
+    assert ram_milestones.ensure(conn, 1, 3176, install) == []
+    assert "não está logado" in ram_milestones.PROBLEMS[1]
+    (tmp_path / "RetroAchievements.ini").write_text("[Achievements]\nUsername = u\nApiToken = abc12345\n")
+
+    def refused(*a):
+        raise ram_milestones.RAError("O RetroAchievements recusou o login do Dolphin (o token pode ter expirado).")
+
+    monkeypatch.setattr(ram_milestones, "fetch_patch", refused)
+    assert ram_milestones.ensure(conn, 1, 3176, install) == []
+    assert "token" in ram_milestones.PROBLEMS[1]
+    monkeypatch.setattr(ram_milestones, "fetch_patch", lambda *a: PATCH)
+    assert ram_milestones.ensure(conn, 1, 3176, install)
+    assert 1 not in ram_milestones.PROBLEMS  # fetched fine: the problem is gone
+    # unreadable Dolphin memory is recorded by the poller and cleared by the next good read
+    mem = FakeMem(conn, sid, [ram(playing=False)] * 3)  # attach works, the title screen is up: the old error must go
+    tries = []
+
+    def attach():
+        tries.append(1)
+        if len(tries) == 1:
+            raise DolphinMemoryError("sem os 24 MB")
+        return mem
+
+    run(conn, sid, mem, monkeypatch, attach)
+    assert 1 not in ram_milestones.PROBLEMS and len(tries) >= 2
+
+
+def test_another_game_open_is_reported(monkeypatch):
+    conn, sid = setup(monkeypatch)
+    ram_milestones.PROBLEMS.clear()
+    mem = FakeMem(conn, sid, [ram(marvin=1)] * 3, code=b"GXXE01")
+    assert run(conn, sid, mem, monkeypatch) == []  # nothing is read from another game's RAM
+    assert "GXXE01" in ram_milestones.PROBLEMS[1]
+    ram_milestones.PROBLEMS.clear()

@@ -11,6 +11,10 @@ export type Game = {
   achievements: AchievementSummary | null;
   presence: { message: string; at: string | null } | null; // last RetroAchievements rich presence line
 };
+export type Milestones =
+  | { supported: false }
+  | { supported: true; total: number; reached: number; items: { name: string; reached: boolean }[]; read_at: string | null; problem: string | null };
+
 export type AchievementSummary = {
   title: string;
   total: number;
@@ -130,6 +134,7 @@ export const api = {
   raSettings: () => call<RaSettings>("/ra/settings"),
   saveRaSettings: (user: string, key: string | null) => call<RaSettings>("/ra/settings", "PUT", key === null ? { user } : { user, key }),
   gameRa: (id: number) => call<{ ra_id: number | null; summary: AchievementSummary | null }>(`/games/${id}/ra`),
+  milestones: (id: number) => call<Milestones>(`/games/${id}/milestones`),
   saveGameRa: (id: number, ra: string) => call<{ ra_id: number | null }>(`/games/${id}/ra`, "PUT", { ra }),
   syncGameRa: (id: number) => call<AchievementSummary>(`/games/${id}/ra/sync`, "POST"),
   syncAllRa: () => call<RaSyncResult[]>("/ra/sync", "POST"),
