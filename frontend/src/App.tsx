@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, Archive, Moon, Sun, Wrench, X } from "lucide-react";
-import { api, DolphinInfo, Game } from "./api";
+import { Activity, Archive, BarChart3, Clock3, Cpu, FolderOpen, KeyRound, LucideIcon, Moon, Sun, Trophy, Wrench, X } from "lucide-react";
+import { api, DolphinInfo, formatDuration, Game } from "./api";
+import { collectEditions } from "./collection";
 import { Notify, splitTitle } from "./ui";
 import { Library } from "./pages/Library";
 import { GamePage } from "./pages/GamePage";
@@ -8,13 +9,14 @@ import { Stats } from "./pages/Stats";
 import { Emulators } from "./pages/Emulators";
 import { Achievements } from "./pages/Achievements";
 import { Settings } from "./pages/Settings";
+import { Accounts } from "./pages/Accounts";
 
-type Route = { page: "library" | "game" | "stats" | "emulators" | "achievements" | "settings"; id?: number };
+type Route = { page: "library" | "game" | "stats" | "emulators" | "achievements" | "settings" | "accounts"; id?: number };
 
 function parse(hash: string): Route {
   const [, page, id] = hash.replace(/^#/, "").split("/");
   if (page === "game" && Number(id)) return { page: "game", id: Number(id) };
-  if (page === "stats" || page === "emulators" || page === "achievements" || page === "settings") return { page };
+  if (page === "stats" || page === "emulators" || page === "achievements" || page === "settings" || page === "accounts") return { page };
   return { page: "library" };
 }
 
@@ -111,11 +113,31 @@ export default function App() {
 
   const ctx: Ctx = { games: games ?? [], loaded: games !== null, info, notify, refresh, play };
   const activity = route.page === "stats" || route.page === "achievements";
-  const workshop = route.page === "emulators" || route.page === "settings";
+  const workshop = route.page === "emulators" || route.page === "settings" || route.page === "accounts";
   const current = activity ? "Atividade" : workshop ? "Oficina" : "Acervo";
-  const sections = activity
-    ? [["stats", "Diário e estatísticas"], ["achievements", "Conquistas"]]
-    : [["emulators", "Emuladores"], ["settings", "Pastas e arquivos"]];
+  const sectionSub = activity
+    ? "Diário de sessões, ritmo de jogo e progresso de conquistas."
+    : "Emuladores, pastas do acervo e contas locais.";
+  const sections: [Route["page"], string, LucideIcon][] = activity
+    ? [
+      ["stats", "Diário e estatísticas", BarChart3],
+      ["achievements", "Conquistas", Trophy],
+    ]
+    : [
+      ["emulators", "Emuladores", Cpu],
+      ["settings", "Pastas e DATs", FolderOpen],
+      ["accounts", "RetroAchievements", KeyRound],
+    ];
+
+  const editions = collectEditions(ctx.games);
+  const totalSeconds = ctx.games.reduce((sum, g) => sum + g.seconds_played, 0);
+  const totalEarned = editions.reduce((sum, discs) => {
+    const newest = discs.map((d) => d.achievements).filter((a) => a !== null)
+      .sort((a, b) => (b!.synced_at ?? "").localeCompare(a!.synced_at ?? ""))[0];
+    return sum + (newest?.earned ?? 0);
+  }, 0);
+  const identifiedPlatforms = [...new Set(ctx.games.map((g) => g.platform).filter((p): p is string => p !== null))];
+  const readyPlatforms = identifiedPlatforms.filter((p) => ctx.games.some((g) => g.platform === p && g.has_emulator)).length;
 
   return (
     <div className="shell">
@@ -138,9 +160,36 @@ export default function App() {
       <main className="page">
         {(activity || workshop) && (
           <div className="section-mast">
-            <h1>{current}</h1>
-            <nav aria-label={current}>{sections.map(([page, label]) => (
-              <a key={page} href={`#/${page}`} aria-current={route.page === page ? "page" : undefined}>{label}</a>
+            <div className="mast-top">
+              <div className="mast-heading">
+                <div className="kicker"><span className="signal" />{current}</div>
+                <h1>{current}</h1>
+                <p className="mast-sub">{sectionSub}</p>
+              </div>
+              {ctx.loaded && (
+                <div className="mast-pills" aria-label="Resumo rápido">
+                  {activity ? (
+                    <>
+                      <span className="mast-pill"><Clock3 size={14} aria-hidden="true" /><b className="num">{formatDuration(totalSeconds)}</b> registrados</span>
+                      {totalEarned > 0 && <span className="mast-pill gold"><Trophy size={14} aria-hidden="true" /><b className="num">{totalEarned}</b> conquistas</span>}
+                    </>
+                  ) : (
+                    <>
+                      {identifiedPlatforms.length > 0 && (
+                        <span className={`mast-pill ${readyPlatforms === identifiedPlatforms.length ? "gold" : "warn"}`}>
+                          <Cpu size={14} aria-hidden="true" /><b className="num">{readyPlatforms}/{identifiedPlatforms.length}</b> plataformas prontas
+                        </span>
+                      )}
+                      {info?.running && <span className="mast-pill warn"><span className="status-dot off" />Dolphin aberto</span>}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <nav className="mast-tabs" aria-label={current}>{sections.map(([page, label, Icon]) => (
+              <a key={page} href={`#/${page}`} aria-current={route.page === page ? "page" : undefined}>
+                <Icon size={15} aria-hidden="true" />{label}
+              </a>
             ))}</nav>
           </div>
         )}
@@ -151,6 +200,7 @@ export default function App() {
         {route.page === "achievements" && <Achievements {...ctx} />}
         {route.page === "emulators" && <Emulators {...ctx} />}
         {route.page === "settings" && <Settings {...ctx} />}
+        {route.page === "accounts" && <Accounts {...ctx} />}
       </main>
 
       {toast && (

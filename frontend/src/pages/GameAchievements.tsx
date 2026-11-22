@@ -70,7 +70,7 @@ export function GameAchievements({ gameId, notify, onChange }: {
         </details>
       </Panel>
       <p className="muted" style={{ fontSize: 13 }}>
-        As conquistas são ganhas dentro do emulador, que precisa estar logado (veja Atividade → Conquistas), e são sincronizadas
+        As conquistas são ganhas dentro do emulador, que precisa estar logado (veja Oficina → RetroAchievements), e são sincronizadas
         sozinhas quando você fecha o jogo.
       </p>
     </div>
