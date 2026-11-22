@@ -475,8 +475,7 @@ def remove_pack(install: Install, game_id: str) -> bool:
 RA_SECTION = "Achievements"
 
 
-def ra_status(install: Install) -> dict:
-    """Is Dolphin logged in to RetroAchievements? Never returns the token itself."""
+def _ra_ini(install: Install) -> dict[str, str]:
     values: dict[str, str] = {}
     try:
         text = _read_text(install.config_dir / "RetroAchievements.ini")
@@ -489,6 +488,19 @@ def ra_status(install: Install) -> dict:
         elif inside and "=" in line:
             k, v = line.split("=", 1)
             values[k.strip().lower()] = v.strip()
+    return values
+
+
+def ra_login(install: Install) -> tuple[str, str] | None:
+    """(user, token) Dolphin logged in with, to ask RetroAchievements for a game's rules; None if not logged in."""
+    values = _ra_ini(install)
+    user, token = values.get("username", ""), values.get("apitoken", "")
+    return (user, token) if user and token else None
+
+
+def ra_status(install: Install) -> dict:
+    """Is Dolphin logged in to RetroAchievements? Never returns the token itself."""
+    values = _ra_ini(install)
     user = values.get("username", "").encode("utf-8", "surrogateescape").decode("utf-8", "replace")
     return {
         "enabled": values.get("enabled", "").lower() == "true",

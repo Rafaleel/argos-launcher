@@ -169,6 +169,22 @@ def resolve_game_id(md5: str) -> int | None:
     return game or None  # 0 means "unknown hash"
 
 
+def fetch_patch(game_id: int, user: str, token: str) -> dict:
+    """The rules of a game's achievements and its rich presence, the way emulators ask for them (`patch`).
+    Needs the login token. It goes in the POST body, never in the URL, and no error text carries it."""
+    try:
+        data = get_json(DOREQUEST, data=urllib.parse.urlencode({"r": "patch", "g": game_id, "u": user, "t": token}).encode())
+    except RAError as exc:
+        if "recusou" in str(exc):  # 401/403: the token, not the API key that get_json talks about
+            raise RAError("O RetroAchievements recusou o login do Dolphin (o token pode ter expirado). "
+                          "Entre de novo nas conquistas do Dolphin, em Oficina.") from None
+        raise
+    patch = data.get("PatchData") if isinstance(data, dict) else None
+    if not isinstance(patch, dict) or not isinstance(patch.get("Achievements"), list):
+        raise RAError("O RetroAchievements não devolveu as regras desse jogo. Confira o login no Dolphin.")
+    return patch
+
+
 def login_token(user: str, password: str) -> tuple[str, str]:
     """Log in the way emulators do (rcheevos `login2`) and return (user name, token). The password is not kept."""
     try:

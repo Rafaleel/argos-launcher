@@ -56,6 +56,11 @@ def read_operand(op: Operand, read: Callable[[int, int], bytes]) -> int:
     return b >> _BITS.index(op.size) & 1
 
 
+def core_conditions(rule: str) -> list[str]:
+    """The conditions of the first group (everything before the first alternative `S`)."""
+    return _GROUP_SEP.split(rule)[0].split("_")
+
+
 def milestone_flag(rule: str) -> Flag | None:
     """The flag a rule's event sets, or None when the rule is not a simple "flag becomes X" transition.
 
@@ -65,7 +70,7 @@ def milestone_flag(rule: str) -> Flag | None:
     built on counters or measured values have no such pair and are skipped as well.
     shortcut: a wide value that steps up (a scenario-end byte 4 -> 5) may change back later, unlike a
     bit flag; it needs a live check, and so does the achievement that uses it."""
-    core = _GROUP_SEP.split(rule)[0].split("_")
+    core = core_conditions(rule)
     found = []
     for before, after in zip(core, core[1:]):
         a, b = _PAIR_OPS.match(before), _NOW.match(after)
