@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Gamepad2, Keyboard } from "lucide-react";
 import type { Ctx } from "../App";
 import { api, DolphinInfo, Emulator, EmulatorOption, VideoSettings } from "../api";
-import { Field, Notify, Panel, platformName } from "../ui";
+import { Field, Notify, Panel, platformName, Select } from "../ui";
 import { VideoForm } from "./GameDolphin";
 
 const same = (e: Emulator | undefined, o: EmulatorOption) =>
@@ -28,11 +28,10 @@ function PlatformRow({ platform, current, options, onSaved, notify }: {
       </div>
       <div>
         {options.length > 0 ? (
-          <select aria-label={`Emulador de ${platformName(platform)}`} value={chosen >= 0 ? chosen : "custom"}
-            onChange={(e) => { const o = options[Number(e.target.value)]; if (o) save({ platform, executable: o.executable, args: o.args }); }}>
-            {chosen < 0 && <option value="custom">{current ? "Personalizado" : "Escolha um emulador"}</option>}
-            {options.map((o, i) => <option key={o.name} value={i}>{o.name}</option>)}
-          </select>
+          <Select label={`Emulador de ${platformName(platform)}`} value={chosen >= 0 ? String(chosen) : "custom"}
+            onChange={(v) => { const o = options[Number(v)]; if (o) save({ platform, executable: o.executable, args: o.args }); }}
+            options={[...(chosen < 0 ? [{ value: "custom", label: current ? "Personalizado" : "Escolha um emulador" }] : []),
+              ...options.map((o, i) => ({ value: String(i), label: o.name }))]} />
         ) : (
           <p className="muted" style={{ fontSize: 13 }}>Nenhum emulador instalado para esta plataforma foi encontrado.</p>
         )}
@@ -106,10 +105,9 @@ function DolphinSection({ info, notify, refresh }: { info: DolphinInfo; notify: 
             {info.controllers.length > 0 ? (
               <Field label="Controle detectado" hint={info.controllers.some((c) => c.source === "kernel")
                 ? "Sem a biblioteca SDL3 o nome é um palpite; se não responder no jogo, use o nome que o Dolphin mostra." : undefined}>
-                <select value={device} onChange={(e) => { setTouched(true); setDevice(e.target.value); }}>
-                  {!info.controllers.some((c) => c.device === device) && device && <option value={device}>{device}</option>}
-                  {info.controllers.map((c) => <option key={c.device} value={c.device}>{c.name}{c.device.startsWith("SDL/0/") ? "" : ` (${c.device.split("/")[1]})`}</option>)}
-                </select>
+                <Select label="Controle detectado" value={device} onChange={(v) => { setTouched(true); setDevice(v); }}
+                  options={[...(!info.controllers.some((c) => c.device === device) && device ? [{ value: device, label: device }] : []),
+                    ...info.controllers.map((c) => ({ value: c.device, label: `${c.name}${c.device.startsWith("SDL/0/") ? "" : ` (${c.device.split("/")[1]})`}` }))]} />
               </Field>
             ) : (
               <Field label="Controle" hint="Nenhum controle conectado. Ligue ou conecte o controle: ele aparece aqui sozinho.">

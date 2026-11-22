@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, Archive, Moon, Sun, Wrench, X } from "lucide-react";
 import { api, DolphinInfo, Game } from "./api";
 import { Notify, splitTitle } from "./ui";
@@ -95,6 +95,16 @@ export default function App() {
     }, 5000);
     return () => clearInterval(id);
   }, [playing?.id, refresh]);
+
+  // The backend syncs the achievements right after a game closes: look again a few times so the new counts show up.
+  const wasPlaying = useRef(false);
+  useEffect(() => {
+    const ended = wasPlaying.current && !playing;
+    wasPlaying.current = !!playing;
+    if (!ended) return;
+    const timers = [3000, 10000, 30000].map((ms) => setTimeout(() => refresh().catch(() => undefined), ms));
+    return () => timers.forEach(clearTimeout);
+  }, [playing, refresh]);
 
   const play = (g: Game) =>
     api.play(g.id).then(() => { notify(`Abrindo ${splitTitle(g.title).name}…`); return refresh(); }).catch((e) => notify(e.message, true));

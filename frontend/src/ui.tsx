@@ -1,4 +1,5 @@
-import { ReactNode, useState } from "react";
+import { KeyboardEvent, ReactNode, useEffect, useId, useRef, useState } from "react";
+import { Check, ChevronDown } from "lucide-react";
 import { coverUrl, Game } from "./api";
 
 export type Notify = (text: string, error?: boolean) => void;
@@ -70,17 +71,65 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
   );
 }
 
+export type Choice = { value: string; label: string };
+
+/** A dropdown in the site's own style (the native one cannot be styled). A listbox on a button: arrows move,
+ *  Enter or Space picks, Escape and a click elsewhere close it. */
+export function Select({ value, options, onChange, label }: { value: string; options: Choice[]; onChange: (v: string) => void; label?: string }) {
+  const id = useId();
+  const root = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const selected = Math.max(0, options.findIndex((o) => o.value === value));
+  const [active, setActive] = useState(selected);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  const show = () => { setActive(selected); setOpen(true); };
+  const pick = (i: number) => { if (options[i]) onChange(options[i].value); setOpen(false); };
+  const key = (e: KeyboardEvent) => {
+    const move = (to: number) => { e.preventDefault(); if (open) setActive(Math.min(options.length - 1, Math.max(0, to))); else show(); };
+    if (e.key === "ArrowDown") move(active + 1);
+    else if (e.key === "ArrowUp") move(active - 1);
+    else if (e.key === "Home" && open) move(0);
+    else if (e.key === "End" && open) move(options.length - 1);
+    else if ((e.key === "Enter" || e.key === " ") && open) { e.preventDefault(); pick(active); }
+    else if (e.key === "Escape" && open) { e.preventDefault(); setOpen(false); }
+    else if (e.key === "Tab") setOpen(false);
+  };
+  // inside a <label> (Field), a click or a Space on an option would be forwarded to the trigger and reopen the list
+  return (
+    <div className="select" ref={root} onKeyDown={key} onClick={(e) => e.preventDefault()} onKeyUp={(e) => { if (e.key === " ") e.preventDefault(); }}>
+      <button type="button" className="select-btn" aria-label={label} aria-haspopup="listbox" aria-expanded={open}
+        aria-controls={open ? id : undefined} aria-activedescendant={open ? `${id}-${active}` : undefined}
+        onClick={() => (open ? setOpen(false) : show())}>
+        <span>{options[selected]?.label ?? ""}</span>
+        <ChevronDown aria-hidden="true" />
+      </button>
+      {open && (
+        <ul className="select-list" role="listbox" id={id} aria-label={label}>
+          {options.map((o, i) => (
+            <li key={o.value} id={`${id}-${i}`} role="option" aria-selected={i === selected} className={i === active ? "active" : undefined}
+              onPointerEnter={() => setActive(i)} onClick={() => pick(i)}>
+              <span>{o.label}</span>{i === selected && <Check aria-hidden="true" />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Three states: unset ("Padrão"), on, off. */
 export function Tri({ label, value, onChange, hint }: {
   label: string; value: boolean | undefined; onChange: (v: boolean | undefined) => void; hint?: ReactNode;
 }) {
   return (
     <Field label={label} hint={hint}>
-      <select value={value === undefined ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "true")}>
-        <option value="">Padrão</option>
-        <option value="true">Ligado</option>
-        <option value="false">Desligado</option>
-      </select>
+      <Select value={value === undefined ? "" : String(value)} onChange={(v) => onChange(v === "" ? undefined : v === "true")}
+        options={[{ value: "", label: "Padrão" }, { value: "true", label: "Ligado" }, { value: "false", label: "Desligado" }]} label={label} />
     </Field>
   );
 }

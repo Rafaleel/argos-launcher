@@ -218,7 +218,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .section-mast h1 { margin: 10px 0 19px; font-size: clamp(48px,5.4vw,80px); }
 .section-mast nav, .tabs { display: flex; flex-wrap: wrap; gap: 22px; }
 .section-mast nav a, .tabs button { background: transparent; border: 0; border-bottom: 3px solid transparent; padding: 9px 0 12px; text-decoration: none; color: var(--muted); font-weight: 600; }
-.section-mast a[aria-current], .tabs [aria-expanded="true"] { color: var(--ink); border-bottom-color: var(--red); }
+.section-mast a[aria-current], .tabs [aria-selected="true"] { color: var(--ink); border-bottom-color: var(--red); }
 .section-mast nav a:hover, .tabs button:hover { color: var(--red); }
 .stack { display: grid; grid-template-columns: minmax(0,1fr); gap: 16px; }
 .section-gap { margin-top: 30px; }
@@ -377,3 +377,65 @@ details > summary { color: var(--muted); font-weight: 500; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Game page: summary, achievements list, story timeline. */
+.place { display: grid; gap: 12px; border-top-color: var(--poster); }
+.place-head { font: 700 clamp(22px,2.4vw,30px)/1.2 var(--display); letter-spacing: -.03em; overflow-wrap: anywhere; }
+.place-chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.place-chip { display: inline-flex; align-items: center; gap: 9px; min-height: 54px; padding: 8px 13px; background: var(--field); border: 1px solid var(--rule); border-radius: 4px; font-variant-numeric: tabular-nums; }
+.place-chip > span[aria-hidden] { font-size: 20px; line-height: 1; }
+.place-chip small { display: block; color: var(--faint); font-size: 11px; line-height: 1.2; }
+.place-chip b { font: 700 16px/1.25 var(--display); overflow-wrap: anywhere; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px,100%), 1fr)); gap: 16px; }
+.stat { display: grid; align-content: start; gap: 10px; }
+.stat .btn { justify-self: start; margin-top: 4px; }
+.stat p { font-size: 13px; }
+.stat-num { font: 800 34px/1.1 var(--display); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.stat-num small { font: 500 15px var(--text); letter-spacing: 0; color: var(--muted); }
+.meter { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--red); border-radius: 3px; }
+.meter > i.gold { background: var(--gold-ink); }
+.link-box { margin-top: 12px; }
+.ach-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ach-search { position: relative; flex: 1 1 260px; display: block; }
+.ach-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+.ach-search input { padding-left: 36px; }
+.ach-tools .seg { gap: 6px; padding: 4px; }
+.ach-tools .seg button { padding: 7px 16px; }
+.ach-count { margin: 12px 0 4px; font-size: 13px; }
+.ach-list { list-style: none; margin: 0; padding: 0; }
+.ach { display: grid; grid-template-columns: 22px minmax(0,1fr) auto; gap: 14px; align-items: start; padding: 13px 2px; border-top: 1px dashed var(--rule); }
+.ach:first-child { border-top: 0; }
+.ach > svg { margin-top: 2px; color: var(--faint); }
+.ach.earned > svg { color: var(--gold-ink); }
+.ach b { font: 700 16px/1.3 var(--display); }
+.ach p { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.ach:not(.earned) b { color: var(--muted); }
+.tag { display: inline-block; margin-right: 8px; padding: 1px 7px; border: 1px solid var(--outline); border-radius: 3px; font: 600 11px var(--mono); color: var(--faint); vertical-align: 1px; }
+.ach-meta { display: grid; justify-items: end; gap: 2px; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.ach-meta .pts { font: 700 14px var(--display); color: var(--ink); }
+.timeline { list-style: none; margin: 18px 0 0; padding: 0; }
+.timeline li { display: flex; align-items: center; gap: 14px; padding: 9px 0; position: relative; }
+.timeline li + li::before { content: ""; position: absolute; left: 13px; top: -50%; height: 100%; width: 2px; background: var(--rule); }
+.timeline li.done::before { background: var(--gold-ink); }
+.node { z-index: 1; flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; border: 2px solid var(--outline); background: var(--surface); font: 700 12px var(--mono); color: var(--faint); }
+.timeline .done .node { background: var(--gold-ink); border-color: var(--gold-ink); color: var(--paper); }
+.timeline .next .node { border-color: var(--red); color: var(--ink); }
+.step-name { font-weight: 600; overflow-wrap: anywhere; }
+.timeline li:not(.done):not(.next) .step-name { color: var(--muted); font-weight: 500; }
+.step-tag { padding: 1px 8px; border-radius: 10px; background: var(--red); color: #fff; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+@media (max-width: 560px) { .ach { grid-template-columns: 22px minmax(0,1fr); } .ach-meta { grid-column: 2; justify-items: start; grid-auto-flow: column; gap: 12px; } }
+
+/* Custom dropdown, in the same style as the fields. */
+.select { position: relative; min-width: 0; }
+.select-btn { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; min-height: 39px; padding: 7px 10px; text-align: left; background: var(--field); border: 1px solid var(--outline); border-radius: 4px; }
+.select-btn:hover, .select-btn[aria-expanded="true"] { border-color: var(--ink); }
+.select-btn svg { flex: none; width: 16px; height: 16px; color: var(--faint); transition: transform .15s; }
+.select-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.select-list { position: absolute; z-index: 30; left: 0; min-width: 100%; top: calc(100% + 4px); max-height: 280px; overflow: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--outline); border-radius: 4px; box-shadow: 0 12px 30px #0007; }
+.select-list li { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 3px; cursor: pointer; white-space: nowrap; color: var(--muted); }
+.select-list li.active { background: var(--raised); color: var(--ink); }
+.select-list li[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.select-list svg { width: 15px; height: 15px; color: var(--gold-ink); }
+.ach-tools .select { width: 220px; }
+.eyebrow svg { vertical-align: -2px; margin-right: 3px; }

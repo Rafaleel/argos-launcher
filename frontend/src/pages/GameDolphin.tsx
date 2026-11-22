@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { FolderOpen, Trash2 } from "lucide-react";
 import { api, DolphinInfo, formatBytes, inDesktop, PackJob, Profile, VideoSettings } from "../api";
 import { pickArchive } from "../pickers";
-import { Field, Notify, Panel, Tri } from "../ui";
+import { Field, Notify, Panel, Select, Tri } from "../ui";
 
 const num = (v: number | undefined) => (v === undefined ? "" : String(v));
 const fromNum = (s: string) => (s === "" ? undefined : Number(s));
@@ -14,31 +14,20 @@ export function VideoForm({ value, onChange, inherit }: { value: VideoSettings; 
     <div className="stack">
       <div className="form-grid">
         <Field label="Backend de vídeo">
-          <select value={value.backend ?? ""} onChange={(e) => set({ backend: (e.target.value || undefined) as VideoSettings["backend"] })}>
-            <option value="">{inherit}</option>
-            <option value="Vulkan">Vulkan</option>
-            <option value="OGL">OpenGL</option>
-          </select>
+          <Select value={value.backend ?? ""} label="Backend de vídeo" onChange={(v) => set({ backend: (v || undefined) as VideoSettings["backend"] })}
+            options={[{ value: "", label: inherit }, { value: "Vulkan", label: "Vulkan" }, { value: "OGL", label: "OpenGL" }]} />
         </Field>
         <Field label="Placa de vídeo">
-          <select value={value.gpu ?? ""} onChange={(e) => set({ gpu: (e.target.value || undefined) as VideoSettings["gpu"] })}>
-            <option value="">{inherit}</option>
-            <option value="nvidia">NVIDIA (dedicada)</option>
-          </select>
+          <Select value={value.gpu ?? ""} label="Placa de vídeo" onChange={(v) => set({ gpu: (v || undefined) as VideoSettings["gpu"] })}
+            options={[{ value: "", label: inherit }, { value: "nvidia", label: "NVIDIA (dedicada)" }]} />
         </Field>
         <Field label="Resolução interna">
-          <select value={num(value.internal_resolution)} onChange={(e) => set({ internal_resolution: fromNum(e.target.value) })}>
-            <option value="">{inherit}</option>
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <option key={n} value={n}>{n}x{n === 1 ? " · nativa" : n === 3 ? " · ~1080p" : n === 6 ? " · ~4K" : ""}</option>
-            ))}
-          </select>
+          <Select value={num(value.internal_resolution)} label="Resolução interna" onChange={(v) => set({ internal_resolution: fromNum(v) })}
+            options={[{ value: "", label: inherit }, ...[1, 2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: `${n}x${n === 1 ? " · nativa" : n === 3 ? " · ~1080p" : n === 6 ? " · ~4K" : ""}` }))]} />
         </Field>
         <Field label="Filtragem anisotrópica">
-          <select value={num(value.anisotropy)} onChange={(e) => set({ anisotropy: fromNum(e.target.value) })}>
-            <option value="">{inherit}</option>
-            {[0, 1, 2, 3, 4].map((n) => <option key={n} value={n}>{2 ** n}x</option>)}
-          </select>
+          <Select value={num(value.anisotropy)} label="Filtragem anisotrópica" onChange={(v) => set({ anisotropy: fromNum(v) })}
+            options={[{ value: "", label: inherit }, ...[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: `${2 ** n}x` }))]} />
         </Field>
         <Tri label="VSync" value={value.vsync} onChange={(vsync) => set({ vsync })} />
         <Tri label="Texturas HD" value={value.hires_textures} onChange={(hires_textures) => set({ hires_textures })} />

@@ -10,14 +10,14 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from app import milestones
 from app.api import Conn
-from app.collectors import ra_store, ram_milestones
+from app.collectors import ra_store, ra_sync, ram_milestones
 from app.collectors.base import latest_signal, store_signal
 from app.editions import edition_ids
 from app.collectors.ra_hash import HASHERS
 from app.collectors.retroachievements import RAError, RetroAchievementsCollector, parse_game_ref, resolve_game_id, summary
 
 router = APIRouter(prefix="/api")
-_sync_lock = threading.Lock()
+_sync_lock = ra_sync.LOCK  # shared with the sync that runs when a session ends
 PAUSE = 1.0  # seconds between calls when syncing many games: the API asks for reasonable use
 
 
@@ -62,6 +62,22 @@ def get_game_ra(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     return {"ra_id": ra_id, "summary": current_summary(conn, game_id, ra_id)}
 
 
+@router.get("/games/{game_id}/achievements")
+def get_achievements(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
+    """Every achievement of the linked set, what it takes to earn it and whether (and when) it was earned,
+    from the last sync. Empty until the first sync stores the list."""
+    _game(conn, game_id)
+    ra_id = ra_store.get_ra_id(conn, game_id)
+    if ra_id is None:
+        return {"ra_id": None, "items": []}
+    signal = latest_signal(conn, game_id, "achievements")
+    earned_list = signal.get("earned_list") if signal and signal.get("ra_id") == ra_id else None
+    earned = {e["id"]: e for e in earned_list or [] if isinstance(e, dict) and isinstance(e.get("id"), int)}
+    items = [{**a, "earned": a["id"] in earned, "at": earned[a["id"]]["at"] if a["id"] in earned else None,
+              "hardcore": bool(earned.get(a["id"], {}).get("hardcore"))} for a in ra_store.get_catalog(conn, ra_id)]
+    return {"ra_id": ra_id, "items": items}
+
+
 @router.get("/games/{game_id}/milestones")
 def get_milestones(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     """Story milestones of a game read from the emulator's RAM: which are reached (from the latest signal),
@@ -98,14 +114,10 @@ def _sync(conn: sqlite3.Connection, game_id: int) -> dict:
     if ra_store.get_ra_id(conn, game_id) is None:
         raise HTTPException(409, "Informe o ID do jogo no RetroAchievements primeiro")
     try:
-        payload = RetroAchievementsCollector().collect(conn, game_id)
+        ra_sync.sync(conn, game_id)
     except RAError as exc:
         raise HTTPException(502, str(exc)) from exc
-    ra_id = ra_store.get_ra_id(conn, game_id)
-    for disc in edition_ids(conn, game_id):  # one answer covers every disc linked to the same set
-        if disc != game_id and payload and ra_store.get_ra_id(conn, disc) == ra_id:
-            store_signal(conn, disc, "achievements", payload)
-    return current_summary(conn, game_id, ra_id)
+    return current_summary(conn, game_id, ra_store.get_ra_id(conn, game_id))
 
 
 @router.post("/games/{game_id}/ra/sync")

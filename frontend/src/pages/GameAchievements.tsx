@@ -48,25 +48,30 @@ export function GameAchievements({ gameId, notify, onChange }: {
           </button>
         }
       >
-        <div className="row">
-          <div className="grow">
-            <Field label="Jogo no RetroAchievements (número ou endereço da página)">
-              <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="1234 ou retroachievements.org/game/1234" />
-            </Field>
+        <details open={linked === null || !linked}>
+          <summary>Vínculo com o RetroAchievements</summary>
+          <div className="link-box">
+          <div className="row">
+            <div className="grow">
+              <Field label="Jogo no RetroAchievements (número ou endereço da página)">
+                <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="1234 ou retroachievements.org/game/1234" />
+              </Field>
+            </div>
+            <button className="btn" onClick={detect} disabled={busy !== ""}><ScanSearch /> {busy === "detect" ? "Detectando…" : "Detectar pelo disco"}</button>
+            <button className="btn" onClick={link} disabled={busy !== ""}>Salvar</button>
           </div>
-          <button className="btn" onClick={detect} disabled={busy !== ""}><ScanSearch /> {busy === "detect" ? "Detectando…" : "Detectar pelo disco"}</button>
-          <button className="btn" onClick={link} disabled={busy !== ""}>Salvar</button>
-        </div>
-        {linked !== null && (
-          <p className="muted" style={{ marginTop: 12, fontSize: 13 }}>
-            Vinculado ao jogo <a href={`https://retroachievements.org/game/${linked}`} target="_blank" rel="noreferrer">{linked}</a>.
-            Confira no site que é a versão certa.
-          </p>
-        )}
+          {linked !== null && (
+            <p className="muted" style={{ marginTop: 12, fontSize: 13 }}>
+              Vinculado ao jogo <a href={`https://retroachievements.org/game/${linked}`} target="_blank" rel="noreferrer">{linked}</a>.
+              Confira no site que é a versão certa.
+            </p>
+          )}
+          </div>
+        </details>
       </Panel>
       <p className="muted" style={{ fontSize: 13 }}>
-        As conquistas são ganhas dentro do emulador, que precisa estar logado (veja Atividade → Conquistas). Aqui elas medem o que
-        você já desbloqueou; ainda não dizem quanto da história você jogou.
+        As conquistas são ganhas dentro do emulador, que precisa estar logado (veja Atividade → Conquistas), e são sincronizadas
+        sozinhas quando você fecha o jogo.
       </p>
     </div>
   );

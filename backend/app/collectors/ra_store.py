@@ -40,3 +40,18 @@ def set_ra_id(conn: sqlite3.Connection, game_id: int, ra_id: int | None) -> None
             (game_id, ra_id),
         )
     conn.commit()
+
+
+def save_catalog(conn: sqlite3.Connection, ra_id: int, items: list[dict]) -> None:
+    """The achievements of a set (title, what to do, points), replaced on every sync. Shared by every disc of it."""
+    with conn:
+        conn.execute("DELETE FROM ra_achievements WHERE ra_id = ?", (ra_id,))
+        conn.executemany(
+            "INSERT OR REPLACE INTO ra_achievements (ra_id, achievement_id, position, title, description, points, kind)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(ra_id, a["id"], i, a["title"], a["description"], a["points"], a["type"]) for i, a in enumerate(items)])
+
+
+def get_catalog(conn: sqlite3.Connection, ra_id: int) -> list[dict]:
+    rows = conn.execute("SELECT achievement_id, title, description, points, kind FROM ra_achievements WHERE ra_id = ? ORDER BY position", (ra_id,))
+    return [{"id": r["achievement_id"], "title": r["title"], "description": r["description"], "points": r["points"], "type": r["kind"]} for r in rows]
