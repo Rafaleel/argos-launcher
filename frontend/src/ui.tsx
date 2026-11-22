@@ -99,8 +99,9 @@ export function Select({ value, options, onChange, label }: { value: string; opt
     else if (e.key === "Escape" && open) { e.preventDefault(); setOpen(false); }
     else if (e.key === "Tab") setOpen(false);
   };
+  // inside a <label> (Field), a click or a Space on an option would be forwarded to the trigger and reopen the list
   return (
-    <div className="select" ref={root} onKeyDown={key}>
+    <div className="select" ref={root} onKeyDown={key} onClick={(e) => e.preventDefault()} onKeyUp={(e) => { if (e.key === " ") e.preventDefault(); }}>
       <button type="button" className="select-btn" aria-label={label} aria-haspopup="listbox" aria-expanded={open}
         aria-controls={open ? id : undefined} aria-activedescendant={open ? `${id}-${active}` : undefined}
         onClick={() => (open ? setOpen(false) : show())}>
