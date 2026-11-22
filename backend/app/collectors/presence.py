@@ -84,7 +84,11 @@ def _poll(db_file: Path, game_id: int, session_id: int, user: str, key: str, ra_
                 # the emulator posts unlocks as they happen, so the site is up to date the moment it closes
                 ra_sync.auto_sync(conn, game_id)
                 synced = True
-            _wait(conn, session_id, INTERVAL)  # the first line arrives a while after the game boots
+            # the first line arrives a while after the game boots; after the end, the last line needs the same wait
+            if ended is None:
+                _wait(conn, session_id, INTERVAL)  # wakes at the end, so the sync is not delayed
+            else:
+                time.sleep(INTERVAL)
             try:
                 p = fetch(user, key)
             except RAError:
