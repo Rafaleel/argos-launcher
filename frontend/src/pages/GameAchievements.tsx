@@ -12,6 +12,13 @@ export function GameAchievements({ gameId, notify, onChange }: {
   const [busy, setBusy] = useState<"" | "detect" | "sync" | "link">("");
   const [openLink, setOpenLink] = useState(false);
 
+  useEffect(() => {
+    if (!openLink) return;
+    const onKey = (e: KeyboardEvent) => { if (!e.defaultPrevented && e.key === "Escape") setOpenLink(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openLink]);
+
   const show = (s: AchievementSummary | null) => { setSummary(s); onChange(s); };
   useEffect(() => {
     api.gameRa(gameId).then((r) => {

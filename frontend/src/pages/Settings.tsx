@@ -67,7 +67,17 @@ export function Settings({ games, notify, refresh }: Ctx) {
     api.settings().then(setS).catch((e) => notify(e.message, true));
   }, [notify]);
 
-  if (!s) return <p className="muted" role="status">Carregando pastas…</p>;
+  if (!s) {
+    return (
+      <div className="ofc-stack" role="status" aria-label="Carregando pastas">
+        <div className="panel skel-panel"><span className="skel-line skel-sm" /><span className="skel-line skel-lg" /></div>
+        <div className="ofc-sources-grid">
+          <div className="panel skel-panel"><span className="skel-line skel-md" /><span className="skel-block" /></div>
+          <div className="panel skel-panel"><span className="skel-line skel-md" /><span className="skel-block" /></div>
+        </div>
+      </div>
+    );
+  }
 
   const scan = async (next: SettingsT) => {
     setScanning(true);

@@ -190,7 +190,7 @@ export function Achievements({ games, info, notify, refresh }: Ctx) {
         <div className="act-ledger-tools">
           <label className="act-search">
             <Search size={16} aria-hidden="true" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar jogo ou plataforma" aria-label="Buscar jogo ou plataforma" />
+            <input data-search-input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar jogo ou plataforma" aria-label="Buscar jogo ou plataforma" />
           </label>
           <div className="seg" role="group" aria-label="Filtrar jogos">
             {([

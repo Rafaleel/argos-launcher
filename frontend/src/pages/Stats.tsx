@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, Clock3, Gamepad2, Layers } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarDays, ChevronDown, ChevronUp, Clock3, Gamepad2, Layers } from "lucide-react";
 import { api, By, formatDuration, Game, GameTime, Period, PlatformTime } from "../api";
 import { collectEditions, editionTitle } from "../collection";
 import { Journal } from "./Journal";
@@ -53,14 +53,17 @@ export function Stats({ games }: { games: Game[] }) {
   const [platforms, setPlatforms] = useState<PlatformTime[]>([]);
   const [top, setTop] = useState<GameTime[] | null>(null);
   const [periodsState, setPeriodsState] = useState<{ by: By; rows: Period[] }>({ by: "day", rows: [] });
+  const [dailyRows, setDailyRows] = useState<Period[]>([]);
   const [by, setBy] = useState<By>("day");
   const [activePeriod, setActivePeriod] = useState<string | null>(null);
+  const [activeHeat, setActiveHeat] = useState<string | null>(null);
   const [showAllGames, setShowAllGames] = useState(false);
 
   useEffect(() => {
     let alive = true;
     api.statsPlatforms().then((r) => { if (alive) setPlatforms(r); }).catch(() => undefined);
     api.statsGames().then((r) => { if (alive) setTop(r); }).catch(() => { if (alive) setTop([]); });
+    api.statsPeriods("day").then((r) => { if (alive) setDailyRows(r); }).catch(() => undefined);
     return () => { alive = false; };
   }, [games]);
 
@@ -93,7 +96,17 @@ export function Stats({ games }: { games: Game[] }) {
     }).sort((a, b) => b.seconds - a.seconds);
   }, [top, gameMap]);
 
-  if (top === null) return <p className="muted" role="status">Carregando estatísticas…</p>;
+  if (top === null) {
+    return (
+      <div className="act-stack" role="status" aria-label="Carregando estatísticas">
+        <div className="panel skel-panel"><span className="skel-line skel-sm" /><span className="skel-line skel-lg" /><span className="skel-block" /></div>
+        <div className="act-split">
+          <div className="panel skel-panel"><span className="skel-line skel-md" /><span className="skel-block" /></div>
+          <div className="panel skel-panel"><span className="skel-line skel-md" /><span className="skel-block" /></div>
+        </div>
+      </div>
+    );
+  }
 
   if (top.length === 0) {
     return (
@@ -218,6 +231,49 @@ export function Stats({ games }: { games: Game[] }) {
         <Journal games={games} />
 
         <div className="act-rankings">
+          {dailyRows.length > 0 && (() => {
+            const maxDay = Math.max(1, ...dailyRows.map((d) => d.seconds));
+            const activeDays = dailyRows.filter((d) => d.seconds > 0).length;
+            const picked = dailyRows.find((d) => d.period === activeHeat) ?? null;
+            return (
+              <Panel
+                title="Consistência"
+                sub={
+                  <span className="act-panel-meta num">
+                    <CalendarDays size={13} aria-hidden="true" />
+                    {picked
+                      ? `${periodFull(picked.period, "day")}: ${formatDuration(picked.seconds)}`
+                      : `${activeDays} de ${dailyRows.length} dias com jogo`}
+                  </span>
+                }
+              >
+                <div className="act-heatmap" onMouseLeave={() => setActiveHeat(null)}>
+                  {dailyRows.map((d) => {
+                    const ratio = d.seconds / maxDay;
+                    const level = d.seconds === 0 ? 0 : ratio < 0.34 ? 1 : ratio < 0.72 ? 2 : 3;
+                    return (
+                      <button
+                        type="button"
+                        key={d.period}
+                        className={`act-heat-cell lv-${level} ${activeHeat === d.period ? "active" : ""}`}
+                        aria-label={`${periodFull(d.period, "day")}: ${formatDuration(d.seconds)}`}
+                        onClick={() => setActiveHeat(d.period)}
+                        onMouseEnter={() => setActiveHeat(d.period)}
+                        onFocus={() => setActiveHeat(d.period)}
+                        onBlur={() => setActiveHeat((cur) => (cur === d.period ? null : cur))}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="act-heat-legend" aria-hidden="true">
+                  <span>Menos</span>
+                  <i className="lv-0" /><i className="lv-1" /><i className="lv-2" /><i className="lv-3" />
+                  <span>Mais</span>
+                </div>
+              </Panel>
+            );
+          })()}
+
           <Panel
             title="Por jogo"
             sub={<span className="act-panel-meta"><Gamepad2 size={13} aria-hidden="true" /> {titles.length} {titles.length === 1 ? "título" : "títulos"}</span>}

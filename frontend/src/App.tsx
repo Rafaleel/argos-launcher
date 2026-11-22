@@ -108,6 +108,25 @@ export default function App() {
     return () => timers.forEach(clearTimeout);
   }, [playing, refresh]);
 
+  // Global keyboard shortcuts: 1/2/3 switch top sections, "/" focuses the visible search box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      if (document.querySelector(".select-list")) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (e.key === "1") { e.preventDefault(); location.hash = "#/"; }
+      else if (e.key === "2") { e.preventDefault(); location.hash = "#/stats"; }
+      else if (e.key === "3") { e.preventDefault(); location.hash = "#/emulators"; }
+      else if (e.key === "/") {
+        const input = document.querySelector<HTMLInputElement>("[data-search-input], .search input");
+        if (input) { e.preventDefault(); input.focus(); input.select(); }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const play = (g: Game) =>
     api.play(g.id).then(() => { notify(`Abrindo ${splitTitle(g.title).name}…`); return refresh(); }).catch((e) => notify(e.message, true));
 
@@ -138,6 +157,7 @@ export default function App() {
   }, 0);
   const identifiedPlatforms = [...new Set(ctx.games.map((g) => g.platform).filter((p): p is string => p !== null))];
   const readyPlatforms = identifiedPlatforms.filter((p) => ctx.games.some((g) => g.platform === p && g.has_emulator)).length;
+  const workshopNeedsAttention = ctx.loaded && ((identifiedPlatforms.length > 0 && readyPlatforms < identifiedPlatforms.length) || !!info?.running);
 
   return (
     <div className="shell">
@@ -146,7 +166,12 @@ export default function App() {
           <a className="wordmark" href="#/" aria-label="Argos · Acervo"><img src="/mark.svg" alt="" />Argos</a>
           <nav className="main-nav" aria-label="Principal">
             {NAV.map(({ name, href, icon: Icon }) => (
-              <a key={name} href={href} aria-current={current === name ? "page" : undefined}><Icon />{name}</a>
+              <a key={name} href={href} aria-current={current === name ? "page" : undefined}>
+                <Icon />{name}
+                {name === "Oficina" && workshopNeedsAttention && (
+                  <span className="nav-alert-dot" role="img" aria-label="Requer atenção" title={info?.running ? "Dolphin aberto" : "Há plataformas sem emulador"} />
+                )}
+              </a>
             ))}
           </nav>
           <div className="mast-tools">

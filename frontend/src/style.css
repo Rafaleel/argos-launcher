@@ -709,3 +709,57 @@ details > summary { color: var(--muted); font-weight: 500; }
   .act-session-count { display: none; }
   .ofc-plat-controls { grid-template-columns: 1fr; }
 }
+
+/* Additions: nav/tab indicators, video override dots, recent game sessions, achievement sort/filters, heatmap, journal filter, skeletons. */
+.nav-alert-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); margin-left: 2px; flex: none; }
+.tab-count { padding: 1px 6px; border-radius: 3px; background: var(--raised); border: 1px solid var(--rule); font: 600 11px var(--mono); color: var(--muted); }
+.tabs [aria-selected="true"] .tab-count { border-color: var(--outline); color: var(--ink); }
+.tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold-fill); flex: none; }
+
+.field-override { min-width: 0; }
+.field-override .field > span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.field-override .field > span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--gold-fill); flex: none; }
+
+.gm-recent { display: grid; gap: 12px; }
+.gm-recent-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.gm-recent-link { font-size: 13px; padding: 0; }
+.gm-recent-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.gm-recent-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(64px, auto); align-items: center; gap: 14px; padding: 9px 12px; background: var(--field); border: 1px solid var(--rule); border-radius: 4px; font-size: 14px; }
+.gm-recent-row time { font-weight: 600; color: var(--ink); }
+.gm-recent-row strong { text-align: right; }
+
+.gm-story-toggle { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+.gm-story-toggle[aria-pressed="true"] { background: var(--red-pill-bg); border-color: var(--red-pill-bd); color: var(--ink); }
+.gm-ach-sort { width: 185px; }
+.gm-miss-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 3px; border: 1px solid var(--red-pill-bd); background: var(--warn-bg); color: var(--ink); font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+
+.act-journal-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.act-journal-plat { width: 210px; }
+
+.act-heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(16px, 1fr)); gap: 5px; }
+.act-heat-cell { aspect-ratio: 1; width: 100%; padding: 0; border-radius: 3px; border: 1px solid var(--rule); background: var(--field); transition: transform .12s, border-color .12s; }
+.act-heat-cell.lv-1 { background: var(--stage); border-color: var(--red-pill-bd); }
+.act-heat-cell.lv-2 { background: var(--poster); border-color: var(--red); }
+.act-heat-cell.lv-3 { background: var(--gold-fill); border-color: var(--gold-pill-bd); }
+:root[data-theme="light"] .act-heat-cell.lv-1, :root[data-theme="light"] .act-heat-legend i.lv-1 { background: #f4d888; border-color: #c9a23f; }
+:root[data-theme="light"] .act-heat-cell.lv-2, :root[data-theme="light"] .act-heat-legend i.lv-2 { background: #e06a4a; border-color: #b83226; }
+:root[data-theme="light"] .act-heat-cell.lv-3, :root[data-theme="light"] .act-heat-legend i.lv-3 { background: #9e1e13; border-color: #6d130b; }
+.act-heat-cell:hover, .act-heat-cell.active { border-color: var(--ink); transform: scale(1.12); }
+.act-heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 10px; font: 11px var(--mono); color: var(--faint); }
+.act-heat-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; border: 1px solid var(--rule); background: var(--field); }
+.act-heat-legend i.lv-1 { background: var(--stage); border-color: var(--red-pill-bd); }
+.act-heat-legend i.lv-2 { background: var(--poster); border-color: var(--red); }
+.act-heat-legend i.lv-3 { background: var(--gold-fill); border-color: var(--gold-pill-bd); }
+
+@keyframes skel-pulse { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
+.skel-panel { display: grid; gap: 12px; }
+.skel-line, .skel-block { display: block; border-radius: 4px; background: var(--raised); animation: skel-pulse 1.4s ease-in-out infinite; }
+.skel-line { height: 16px; }
+.skel-sm { width: 28%; height: 12px; }
+.skel-md { width: 46%; }
+.skel-lg { width: 68%; height: 24px; }
+.skel-block { height: 96px; }
+
+@media (max-width: 640px) {
+  .gm-ach-sort, .act-journal-plat { width: 100%; }
+}

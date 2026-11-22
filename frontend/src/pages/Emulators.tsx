@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Check, Cpu, Gamepad2, Keyboard, Monitor, SlidersHorizontal } from "lucide-react";
+import { Check, Cpu, Gamepad2, Keyboard, Monitor, RotateCcw, SlidersHorizontal } from "lucide-react";
 import type { Ctx } from "../App";
 import { api, DolphinInfo, Emulator, EmulatorOption, VideoSettings } from "../api";
 import { Field, Notify, Panel, platformName, Select } from "../ui";
-import { VideoForm } from "./GameDolphin";
+import { hasVideoOverrides, VideoForm } from "./GameDolphin";
 
 const same = (e: Emulator | undefined, o: EmulatorOption) =>
   !!e && e.executable === o.executable && JSON.stringify(e.args) === JSON.stringify(o.args);
@@ -29,6 +29,13 @@ function PlatformRow({ platform, current, options, onSaved, notify }: {
     setExe(current?.executable ?? "");
     setArgs((current?.args ?? ["{rom}"]).join("\n"));
   }, [current]);
+
+  useEffect(() => {
+    if (!openAdv) return;
+    const onKey = (e: KeyboardEvent) => { if (!e.defaultPrevented && e.key === "Escape") setOpenAdv(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openAdv]);
 
   const chosen = options.findIndex((o) => same(current, o));
   const activeName = chosen >= 0 ? options[chosen].name : current ? current.executable : null;
@@ -188,6 +195,11 @@ function DolphinWorkbench({ info, notify, refresh }: { info: DolphinInfo; notify
             </p>
             <div className="ofc-sub-actions">
               {dirty && <span className="ofc-pill warn">Alterações não salvas</span>}
+              {defaultsLoaded && hasVideoOverrides(defaults) && (
+                <button type="button" className="btn ghost" onClick={() => setDefaults({})}>
+                  <RotateCcw size={14} /> Restaurar padrões
+                </button>
+              )}
               <button type="button" className={dirty ? "btn primary" : "btn"} onClick={save} disabled={!defaultsLoaded}>
                 {!defaultsLoaded ? "Carregando…" : dirty ? "Salvar padrões" : <><Check size={15} /> Salvo</>}
               </button>

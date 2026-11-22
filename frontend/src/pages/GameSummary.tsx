@@ -1,9 +1,10 @@
-import { ArrowRight, Circle, Clock, Crosshair, Flag, Heart, LucideIcon, Map as MapIcon, PlusSquare, Radio, Save, Skull, Trophy } from "lucide-react";
-import { AchievementSummary, formatDuration, Game, GameTime, Milestones } from "../api";
+import { useEffect, useState } from "react";
+import { ArrowRight, BookOpen, Circle, Clock, Crosshair, Flag, Heart, LucideIcon, Map as MapIcon, PlusSquare, Radio, Save, Skull, Trophy } from "lucide-react";
+import { AchievementSummary, api, formatDuration, Game, GameTime, Milestones } from "../api";
 import { parsePresence } from "../presence";
 import { localDate, localTime } from "../ui";
 
-type Story = Extract<Milestones, { supported: true }>;
+const dayFmt = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", year: "numeric" });
 export type Place = { message: string; at: string | null };
 
 // The emoji a rich presence script puts before a fact, as an SVG. Anything unknown gets a plain dot: no emoji is ever drawn.
@@ -20,10 +21,35 @@ function Meter({ value, total, gold }: { value: number; total: number; gold?: bo
   );
 }
 
-export function GameSummary({ game, place, summary, story, time, history, openTab }: {
-  game: Game; place: Place | null; summary: AchievementSummary | null; story: Milestones | null;
+export function GameSummary({ game, discs, place, summary, story, time, history, openTab }: {
+  game: Game; discs: Game[]; place: Place | null; summary: AchievementSummary | null; story: Milestones | null;
   time: GameTime | undefined; history: boolean; openTab: (tab: "achievements" | "story") => void;
 }) {
+  const [recentDays, setRecentDays] = useState<{ day: string; seconds: number; sessions: number }[]>([]);
+  const discKey = discs.map((d) => d.id).join(",");
+
+  useEffect(() => {
+    let active = true;
+    const ids = new Set(discs.map((d) => d.id));
+    api.journal(null).then((page) => {
+      if (!active) return;
+      const matches = page.days
+        .map(({ day, games: rows }) => {
+          const mine = rows.filter((r) => ids.has(r.game_id));
+          if (!mine.length) return null;
+          return {
+            day,
+            seconds: mine.reduce((s, r) => s + r.seconds, 0),
+            sessions: mine.reduce((s, r) => s + r.sessions, 0),
+          };
+        })
+        .filter((x): x is { day: string; seconds: number; sessions: number } => x !== null)
+        .slice(0, 3);
+      setRecentDays(matches);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [discKey, game.seconds_played]);
+
   const parsed = place ? parsePresence(place.message) : null;
   const next = story?.supported ? story.items.find((m) => !m.reached) : undefined;
   const achPct = summary && summary.total > 0 ? Math.round((summary.earned / summary.total) * 100) : null;
@@ -148,6 +174,24 @@ export function GameSummary({ game, place, summary, story, time, history, openTa
           </div>
         </section>
       </div>
+
+      {recentDays.length > 0 && (
+        <section className="panel gm-recent" aria-label="Sessões recentes deste jogo">
+          <div className="gm-recent-head">
+            <span className="eyebrow"><BookOpen size={13} aria-hidden="true" /> Sessões recentes deste jogo</span>
+            <a className="text-link gm-recent-link" href="#/stats">Ver diário completo <ArrowRight size={14} /></a>
+          </div>
+          <ul className="gm-recent-list">
+            {recentDays.map((d) => (
+              <li key={d.day} className="gm-recent-row">
+                <time dateTime={d.day}>{dayFmt.format(new Date(d.day + "T12:00:00"))}</time>
+                <span className="muted num">{d.sessions} {d.sessions === 1 ? "sessão" : "sessões"}</span>
+                <strong className="num">{formatDuration(d.seconds)}</strong>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
