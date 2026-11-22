@@ -1,6 +1,6 @@
 # Automatic story milestones from RetroAchievements progression
 
-Status: draft, waiting for owner approval. Branch: `feat/auto-milestones`.
+Status: approved by the owner (2026-11-22). Branch: `feat/auto-milestones`.
 
 ## Intent
 
@@ -84,3 +84,12 @@ what RA already says about it, and Argos should read them live from Dolphin's RA
 - Exact grammar of the rich presence script and how much of it to parse; start with what RE2's script uses.
 - Whether `scenario` is a column or part of the stored JSON.
 - Migration wording and the group order shown by the API.
+
+## Known limits (noted for later)
+
+- Only RE2 has been looked at. Games whose RA set has no `progression` achievements, whose rules are counters
+  instead of flags, or that have no rich presence script come out as "not supported" (with the reason). The
+  owner agreed to leave it at that for now; a fallback for untyped sets (use every achievement with a simple
+  flag) was discussed and deliberately not built, to avoid inventing milestones.
+- The type is chosen by the set's volunteer authors and is optional; even in RE2 70 of 172 achievements are untyped.
+  Coverage on a second game is unknown until one is linked and checked.
