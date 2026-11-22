@@ -1,11 +1,21 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, Trash2 } from "lucide-react";
+import { Check, FolderOpen, HardDrive, Image as ImageIcon, Layers, Trash2 } from "lucide-react";
 import { api, DolphinInfo, formatBytes, inDesktop, PackJob, Profile, VideoSettings } from "../api";
 import { pickArchive } from "../pickers";
-import { Field, Notify, Panel, Select, Tri } from "../ui";
+import { Field, Notify, Select, Tri } from "../ui";
 
 const num = (v: number | undefined) => (v === undefined ? "" : String(v));
 const fromNum = (s: string) => (s === "" ? undefined : Number(s));
+
+const VIDEO_KEYS: (keyof VideoSettings)[] = [
+  "backend", "gpu", "internal_resolution", "anisotropy",
+  "vsync", "hires_textures", "prefetch_textures",
+  "render_to_main", "background_input", "keep_on_top",
+];
+
+function sameVideo(a: VideoSettings, b: VideoSettings): boolean {
+  return VIDEO_KEYS.every((k) => (a[k] ?? undefined) === (b[k] ?? undefined));
+}
 
 /** Video and window options. "Padrão" inherits: from Dolphin for the defaults, from the defaults for a game. */
 export function VideoForm({ value, onChange, inherit, grouped = false }: {
@@ -81,22 +91,53 @@ export function VideoForm({ value, onChange, inherit, grouped = false }: {
 export function GameVideo({ gameId, notify }: { gameId: number; notify: Notify }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [mine, setMine] = useState<VideoSettings>({});
+  const [saved, setSaved] = useState<VideoSettings>({});
+
   useEffect(() => {
-    api.profile(gameId).then((p) => { setProfile(p); setMine(p.settings); }).catch((e) => notify(e.message, true));
+    api.profile(gameId).then((p) => { setProfile(p); setMine(p.settings); setSaved(p.settings); }).catch((e) => notify(e.message, true));
   }, [gameId]);
-  if (!profile) return <p className="muted">Carregando…</p>;
-  const save = () => api.saveProfile(gameId, mine).then((v) => { setMine(v); notify("Ajustes do jogo salvos. Valem na próxima vez que ele abrir."); })
+
+  if (!profile) return <p className="muted" role="status">Carregando ajustes de vídeo…</p>;
+
+  const dirty = !sameVideo(mine, saved);
+  const save = () => api.saveProfile(gameId, mine)
+    .then((v) => { setMine(v); setSaved(v); notify("Ajustes do jogo salvos. Valem na próxima vez que ele abrir."); })
     .catch((e) => notify(e.message, true));
+
   return (
-    <Panel title="Vídeo deste jogo" sub={<>"Padrão" usa o que está em Oficina → Emuladores → Dolphin. ID do disco: {profile.game_code ?? "não lido"}.</>}
-      action={<button className="btn primary" onClick={save}>Salvar</button>}>
+    <section className="panel gm-video-panel" aria-label="Vídeo deste jogo">
+      <div className="gm-panel-head">
+        <div>
+          <div className="kicker"><span className="signal" />Ajustes deste jogo</div>
+          <h3>Vídeo no Dolphin</h3>
+          <div className="ofc-hw-tags">
+            <span className={`ofc-pill ${profile.game_code ? "ok" : "warn"} num`}>
+              ID do disco: {profile.game_code ?? "não lido"}
+            </span>
+          </div>
+        </div>
+        <div className="ofc-sub-actions">
+          {dirty && <span className="ofc-pill warn">Alterações não salvas</span>}
+          <button type="button" className={dirty ? "btn primary" : "btn"} onClick={save}>
+            {dirty ? "Salvar ajustes" : <><Check size={15} /> Salvo</>}
+          </button>
+        </div>
+      </div>
+
+      <div className="ofc-sub-bar">
+        <p className="muted">
+          <strong>Padrão</strong> herda o que está configurado em <a href="#/emulators">Oficina → Emuladores → Dolphin</a>.
+        </p>
+      </div>
+
       {profile.game_code === null && (
-        <p className="note warn" style={{ marginBottom: 16 }}>
+        <p className="note warn">
           Não consegui ler o ID do disco: backend e placa funcionam, mas resolução, anisotropia, VSync e texturas não serão aplicados.
         </p>
       )}
-      <VideoForm value={mine} onChange={setMine} inherit="Padrão" />
-    </Panel>
+
+      <VideoForm value={mine} onChange={setMine} inherit="Padrão" grouped />
+    </section>
   );
 }
 
@@ -105,10 +146,12 @@ export function GameTextures({ gameId, info, notify }: { gameId: number; info: D
   const [archive, setArchive] = useState("");
   const [job, setJob] = useState<PackJob | null>(null);
   const [confirming, setConfirming] = useState(false);
+
   const load = () => api.profile(gameId).then((p) => {
     setProfile(p);
     api.packJob().then((j) => { if (j.state === "running" && j.game_id === p.game_code) setJob(j); }).catch(() => undefined);
   }).catch((e) => notify(e.message, true));
+
   useEffect(() => { load(); }, [gameId]);
   useEffect(() => {
     if (job?.state !== "running") return;
@@ -119,9 +162,10 @@ export function GameTextures({ gameId, info, notify }: { gameId: number; info: D
     return () => clearInterval(id);
   }, [job?.state]);
 
-  if (!profile) return <p className="muted">Carregando…</p>;
+  if (!profile) return <p className="muted" role="status">Carregando texturas…</p>;
   const t = profile.textures;
   if (t === null) return <p className="note warn">Sem o ID do disco não dá para gerenciar texturas.</p>;
+
   const running = job?.state === "running";
   const install = (path: string) => api.installTextures(gameId, path.trim())
     .then(() => setJob({ state: "running", message: "Extraindo o pacote…", game_id: profile.game_code }))
@@ -130,26 +174,87 @@ export function GameTextures({ gameId, info, notify }: { gameId: number; info: D
   const remove = () => { setConfirming(false); api.removeTextures(gameId).then(() => { notify("Pacote removido."); load(); }).catch((e) => notify(e.message, true)); };
 
   return (
-    <Panel title={t.installed ? "Pacote instalado" : "Nenhum pacote instalado"}
-      sub={t.installed ? <span className="num">Pasta {t.folder}/ · {t.files} arquivos · {formatBytes(t.bytes)}</span>
-        : <>O pacote precisa ter a pasta {profile.game_code?.slice(0, 3)}/ ou {profile.game_code}/. Pacotes de outro jogo são recusados.</>}
-      action={t.installed && (!confirming
-        ? <button className="btn danger" onClick={() => setConfirming(true)} disabled={info.running || running}><Trash2 /> Remover</button>
-        : <div className="row"><button className="btn danger" onClick={remove}>Confirmar remoção</button><button className="btn ghost" onClick={() => setConfirming(false)}>Cancelar</button></div>)}>
-      {info.running && <p className="note warn" style={{ marginBottom: 12 }}>Feche o Dolphin para instalar ou remover pacotes.</p>}
-      {!info.seven_zip && <p className="note warn" style={{ marginBottom: 12 }}>Instale o p7zip (comando 7z) para extrair pacotes.</p>}
-      {running ? <p className="note ok">{job?.message} Pacotes grandes levam alguns minutos.</p> : inDesktop ? (
-        <button className="btn primary" onClick={choose} disabled={info.running || !info.seven_zip}>
-          <FolderOpen /> {t.installed ? "Trocar pacote…" : "Escolher pacote (.zip, .7z, .rar)…"}
-        </button>
-      ) : (
-        <div className="row">
-          <div className="grow">
-            <Field label="Caminho do pacote"><input value={archive} onChange={(e) => setArchive(e.target.value)} placeholder="/caminho/do/pacote.zip" /></Field>
+    <section className="panel gm-tex-panel" aria-label="Pacote de texturas HD">
+      <div className="gm-panel-head">
+        <div>
+          <div className="kicker"><span className="signal" />Pacote de texturas HD</div>
+          <h3>{t.installed ? "Pacote instalado" : "Nenhum pacote instalado"}</h3>
+          <div className="ofc-hw-tags">
+            <span className={`ofc-pill ${t.installed ? "ok" : "muted"}`}>
+              {t.installed ? "Instalado" : "Sem pacote"}
+            </span>
+            {profile.game_code && <span className="ofc-pill muted num">ID: {profile.game_code}</span>}
           </div>
-          <button className="btn primary" onClick={() => install(archive)} disabled={!archive.trim() || info.running || !info.seven_zip}>Instalar</button>
+        </div>
+        {t.installed && (
+          <div className="row">
+            {!confirming ? (
+              <button type="button" className="btn danger" onClick={() => setConfirming(true)} disabled={info.running || running}>
+                <Trash2 /> Remover pacote
+              </button>
+            ) : (
+              <>
+                <button type="button" className="btn danger" onClick={remove} disabled={info.running || running}>Confirmar remoção</button>
+                <button type="button" className="btn ghost" onClick={() => setConfirming(false)}>Cancelar</button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {t.installed ? (
+        <div className="gm-tex-stats">
+          <div className="gm-tex-stat">
+            <span className="eyebrow"><FolderOpen size={13} aria-hidden="true" /> Pasta</span>
+            <strong className="mono">{t.folder}/</strong>
+          </div>
+          <div className="gm-tex-stat">
+            <span className="eyebrow"><Layers size={13} aria-hidden="true" /> Arquivos</span>
+            <strong className="num">{t.files.toLocaleString("pt-BR")}</strong>
+          </div>
+          <div className="gm-tex-stat">
+            <span className="eyebrow"><HardDrive size={13} aria-hidden="true" /> Tamanho</span>
+            <strong className="num">{formatBytes(t.bytes)}</strong>
+          </div>
+        </div>
+      ) : (
+        <div className="ofc-sub-bar">
+          <p className="muted">
+            O pacote precisa conter a pasta <code className="mono">{profile.game_code?.slice(0, 3)}/</code> ou <code className="mono">{profile.game_code}/</code>. Pacotes de outros jogos são recusados automaticamente.
+          </p>
         </div>
       )}
-    </Panel>
+
+      {info.running && <p className="note warn">Feche o Dolphin para instalar ou remover pacotes de textura.</p>}
+      {!info.seven_zip && <p className="note warn">Instale o p7zip (comando 7z) para extrair pacotes de textura.</p>}
+
+      {running ? (
+        <p className="note ok">{job?.message} Pacotes grandes podem levar alguns minutos.</p>
+      ) : inDesktop ? (
+        <div>
+          <button type="button" className="btn primary" onClick={choose} disabled={info.running || !info.seven_zip}>
+            <ImageIcon size={16} /> {t.installed ? "Trocar pacote de texturas…" : "Escolher pacote (.zip, .7z, .rar)…"}
+          </button>
+        </div>
+      ) : (
+        <div className="gm-link-drawer">
+          <div className="row">
+            <div className="grow">
+              <Field label="Caminho do pacote (.zip, .7z, .rar)">
+                <input
+                  value={archive}
+                  onChange={(e) => setArchive(e.target.value)}
+                  placeholder="/caminho/do/pacote.zip"
+                  onKeyDown={(e) => { if (e.key === "Enter" && archive.trim() && !info.running && info.seven_zip) install(archive); }}
+                />
+              </Field>
+            </div>
+            <button type="button" className="btn primary" onClick={() => install(archive)} disabled={!archive.trim() || info.running || !info.seven_zip}>
+              Instalar pacote
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
