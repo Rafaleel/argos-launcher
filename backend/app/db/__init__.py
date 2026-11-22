@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS milestones (
     position INTEGER NOT NULL,
     name TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS milestone_groups (
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    scenario TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    undetectable INTEGER NOT NULL,
+    PRIMARY KEY (game_id, scenario)
+);
 CREATE TABLE IF NOT EXISTS signals (
     id INTEGER PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES games(id),
@@ -103,7 +110,7 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
     have = {r["name"] for r in conn.execute("PRAGMA table_info(milestones)")}
-    for col, kind in (("ra_achievement_id", "INTEGER"), ("address", "INTEGER"), ("size", "TEXT"), ("value", "INTEGER"), ("gates", "TEXT")):
+    for col, kind in (("ra_achievement_id", "INTEGER"), ("address", "INTEGER"), ("size", "TEXT"), ("value", "INTEGER"), ("gates", "TEXT"), ("scenario", "TEXT")):
         if col not in have:  # the table predates the RAM reader
             conn.execute(f"ALTER TABLE milestones ADD COLUMN {col} {kind}")
     for suffix in ("", "-wal", "-shm"):  # the database holds the RetroAchievements key, and the WAL holds the same data as the database
