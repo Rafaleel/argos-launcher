@@ -439,7 +439,7 @@ def test_non_dict_achievement_items_are_skipped():
 def test_summary_never_raises_even_for_garbage_payloads(client, tmp_path):
     from app.db import connect
 
-    assert summary({"total": 10**400, "earned": 5}) == {"title": "", "total": 0, "earned": 5, "earned_hardcore": 0, "percent": None, "synced_at": None}
+    assert summary({"total": 10**400, "earned": 5}) == {"title": "", "total": 0, "earned": 5, "earned_hardcore": 0, "points_earned": 0, "points_total": 0, "percent": None, "synced_at": None}
     assert summary({"total": "x", "earned": None})["percent"] is None and summary("not a dict") is None
     gid = prepare(client, tmp_path)
     c = connect()

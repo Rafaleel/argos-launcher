@@ -262,6 +262,8 @@ def summary(payload: dict | None) -> dict | None:
         "total": total,
         "earned": earned,
         "earned_hardcore": _int(payload.get("earned_hardcore")) or 0,
+        "points_earned": _int(payload.get("points_earned")) or 0,
+        "points_total": _int(payload.get("points_total")) or 0,
         "percent": round(min(100.0, 100.0 * earned / total), 1) if total else None,
         "synced_at": payload.get("synced_at"),
     }
