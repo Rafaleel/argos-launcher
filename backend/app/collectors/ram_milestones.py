@@ -87,6 +87,9 @@ def _poll(db_file: Path, game_id: int, session_id: int, ra_id: int, code: str, i
                         PROBLEMS[game_id] = f"O Dolphin está com outro jogo aberto ({opened.decode('ascii', 'replace')})."
             except DolphinMemoryError as exc:
                 PROBLEMS[game_id] = str(exc)  # Dolphin is open but its RAM cannot be read
+            except ValueError:  # a rule or gate points past MEM1 (24 MB); it would fail every round
+                PROBLEMS[game_id] = "Este jogo usa um endereço fora da RAM principal do GameCube; o Argos ainda não lê esse caso."
+                break
             except OSError:
                 if mem is not None:
                     mem.close()

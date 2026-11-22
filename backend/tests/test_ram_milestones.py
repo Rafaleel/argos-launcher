@@ -230,3 +230,25 @@ def test_another_game_open_is_reported(monkeypatch):
     assert run(conn, sid, mem, monkeypatch) == []  # nothing is read from another game's RAM
     assert "GXXE01" in ram_milestones.PROBLEMS[1]
     ram_milestones.PROBLEMS.clear()
+
+
+def test_an_address_outside_the_games_ram_is_reported_and_stops_the_poller(monkeypatch):
+    conn, sid = setup(monkeypatch)
+    ram_milestones.PROBLEMS.clear()
+    mem = FakeMem(conn, sid, [ram(marvin=1)] * 3)
+    real_read = mem.read
+
+    def read(a, n):  # what DolphinMemory.read does for an address past its 24 MB
+        if a >= 0x1800000:
+            raise ValueError("fora da RAM do jogo")
+        return real_read(a, n)
+
+    mem.read = read
+    items, undetectable = milestones.build(FULL, KINDS)
+    gate = [(0x1800000, "H", 1)]  # a rich presence gate on memory this reader cannot see
+    milestones.save(conn, 1, [{**m, "gates": [*m["gates"], *gate]} for m in items], undetectable)
+    monkeypatch.setattr(ram_milestones.DolphinMemory, "attach", lambda: mem)
+    t = threading.Thread(target=ram_milestones._poll, args=(ram_milestones.db_path(), 1, sid, 3176, CODE, None))
+    t.start(); t.join(timeout=10)
+    assert not t.is_alive() and "fora da RAM" in ram_milestones.PROBLEMS[1]
+    ram_milestones.PROBLEMS.clear()
