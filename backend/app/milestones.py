@@ -9,7 +9,7 @@ from app.collectors.ra_flags import Flag, Operand, core_conditions, milestone_fl
 
 _BYTE_EQUALS = re.compile(r"^0xH([0-9a-fA-F]+)=(\d+)$")
 _TAG = re.compile(r"^\[([^\]]+)\]")
-_STORY_KINDS = ("progression", "win_condition")
+STORY_KINDS = ("progression", "win_condition")
 
 
 def build(patch: dict, kinds: dict[int, str]) -> tuple[list[dict], dict[str, int]]:
@@ -27,7 +27,7 @@ def build(patch: dict, kinds: dict[int, str]) -> tuple[list[dict], dict[str, int
     undetectable: dict[str, int] = {}
     for a in patch["Achievements"]:
         rule = a.get("MemAddr", "")
-        if kinds.get(a.get("ID")) not in _STORY_KINDS or not isinstance(rule, str):
+        if kinds.get(a.get("ID")) not in STORY_KINDS or not isinstance(rule, str):
             continue
         tag = _TAG.match(str(a.get("Description", "")).strip())
         scenario = tag[1] if tag else ""

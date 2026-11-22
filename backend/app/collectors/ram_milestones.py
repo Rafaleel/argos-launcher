@@ -1,9 +1,11 @@
 """Story milestones read from Dolphin's RAM while a game is played.
 
-For a game with a hand-picked story (STORIES) the rules come from RetroAchievements once, using the
-login token Dolphin holds, and are kept in `milestones`. Then, every INTERVAL seconds of a session, the
-flags are read from the emulator's RAM and a `milestones` signal is stored whenever the set of reached
-ones changes. The flags are read as state: whether they survive a loaded save is UNVERIFIED (issue #16).
+The milestones of a game come from its RetroAchievements set: the achievements typed progression or
+win_condition (the catalog `ra_store` keeps), their rules from `r=patch` with the login token Dolphin holds,
+and the "a game is being played" gate from the game's rich presence script. They are built once and kept in
+`milestones`. Then, every INTERVAL seconds of a session, the flags are read from the emulator's RAM and a
+`milestones` signal is stored whenever the set of reached ones changes. The flags are read as state: whether
+they survive a loaded save is UNVERIFIED (issue #16).
 """
 import sqlite3
 import threading
@@ -11,6 +13,7 @@ import time
 from pathlib import Path
 
 from app import milestones
+from app.collectors import ra_store, rich_presence
 from app.collectors.base import store_signal
 from app.collectors.presence import _ended
 from app.collectors.retroachievements import RAError, fetch_patch
@@ -21,39 +24,45 @@ from app.emulators.dolphin_memory import DolphinMemory, DolphinMemoryError
 
 INTERVAL = 2.0
 POLLERS: list[threading.Thread] = []  # tests join these
-# shortcut: one game picked by hand (RE2 GameCube, Leon A scenario); the optional side events are left out.
-# RetroAchievements game id -> (achievement description prefix, achievement ids to skip). Add a game by hand.
-# Third element: the bits that say a game is being played, from RA's own rich presence script for RE2
-# (`0xS163DA4=0` is "On the Title Screen", `0xR163DA6=1` is "Watching a demo"). Without them the zeroed RAM of
-# the title screen reads as "scenario 0, nothing reached" and every quit to title would store an empty set.
 PROBLEMS: dict[int, str] = {}  # game id -> why the reader cannot work right now; the milestones endpoint shows it
-STORIES = {3176: ("[Leon A]", frozenset({439337, 439550}), ((0x163DA4, "S", 1), (0x163DA6, "R", 0)))}
+
+
+def _cannot(game_id: int, why: str) -> list[dict]:
+    PROBLEMS[game_id] = why
+    return []
 
 
 def ensure(conn: sqlite3.Connection, game_id: int, ra_id: int, install) -> list[dict]:
-    """The stored milestones of the game, fetched first if there are none. [] when there is no story for the
-    game, Dolphin has no RetroAchievements login, or the site does not answer (tried again next session).
-    shortcut: stored rows are never rebuilt; if a story's prefix or skip list changes, delete that game's
-    `milestones` rows. The reason for [] (no login, expired token, site down) goes to PROBLEMS."""
-    if ra_id not in STORIES:
-        return []
+    """The stored milestones of the game, built first if there are none. [] when the game cannot be built:
+    its achievements were never synced or none is typed progression, Dolphin has no RetroAchievements login, the
+    site does not answer, the rich presence does not say when a game is being played, or no story achievement
+    can be read from the RAM. The reason goes to PROBLEMS and nothing is stored; it is tried again next session.
+    shortcut: stored rows are never rebuilt; to rebuild a game, delete its `milestones` rows."""
     items = milestones.load(conn, game_id)
     if items:
         return items
+    catalog = ra_store.get_catalog(conn, ra_id)
+    kinds = {a["id"]: a["type"] for a in catalog}
+    if not catalog:
+        return _cannot(game_id, "Sincronize as conquistas do jogo antes: o Argos usa o tipo delas (progressão) para montar os marcos.")
+    if not any(k in milestones.STORY_KINDS for k in kinds.values()):
+        return _cannot(game_id, "Este jogo não tem conquistas de progressão no RetroAchievements; o Argos ainda não monta marcos para ele.")
     login = dolphin.ra_login(install)
     if login is None:
-        PROBLEMS[game_id] = ("O Dolphin não está logado no RetroAchievements; o Argos usa esse login para baixar a lista de marcos. "
-                             "Entre nas conquistas do Dolphin, em Oficina.")
-        return []
+        return _cannot(game_id, "O Dolphin não está logado no RetroAchievements; o Argos usa esse login para baixar a lista de marcos. "
+                                "Entre nas conquistas do Dolphin, em Oficina.")
     try:
         patch = fetch_patch(ra_id, *login)
     except RAError as exc:
-        PROBLEMS[game_id] = str(exc)
-        return []
+        return _cannot(game_id, str(exc))
+    gate = rich_presence.in_game_gates(patch.get("RichPresencePatch"))
+    if gate is None:
+        return _cannot(game_id, "Não consegui descobrir, pelo rich presence do jogo, quando ele está em partida; sem isso o Argos não lê a memória.")
+    items, undetectable = milestones.build(patch, kinds)
+    if not items:
+        return _cannot(game_id, "Nenhuma conquista de progressão deste jogo pode ser lida da memória.")
+    milestones.save(conn, game_id, [{**m, "gates": [*m["gates"], *gate]} for m in items], undetectable)
     PROBLEMS.pop(game_id, None)
-    prefix, skip, _ = STORIES[ra_id]
-    items = milestones.build(patch, prefix, skip)
-    milestones.save(conn, game_id, items)
     return milestones.load(conn, game_id)
 
 
@@ -62,8 +71,7 @@ def _poll(db_file: Path, game_id: int, session_id: int, ra_id: int, code: str, i
     mem = None
     last = None
     try:
-        in_game = STORIES[ra_id][2]  # in memory only, so editing STORIES needs no rebuild of the stored rows
-        items = [{**m, "gates": m["gates"] + list(in_game)} for m in ensure(conn, game_id, ra_id, install)]
+        items = ensure(conn, game_id, ra_id, install)
         while items and _ended(conn, session_id) is None:
             time.sleep(INTERVAL)
             got = None
@@ -85,8 +93,11 @@ def _poll(db_file: Path, game_id: int, session_id: int, ra_id: int, code: str, i
                 mem = None  # Dolphin closed or restarted: attach again next round
             if got is not None and got != last:
                 try:
-                    reached = [m["name"] for m, hit in zip(items, got) if hit]
-                    store_signal(conn, game_id, "milestones", {"ra_id": ra_id, "reached": reached, "total": len(items)}, session_id)
+                    scenario, flags = got
+                    group = [m for m in items if m["scenario"] == scenario]
+                    reached = [m["name"] for m, hit in zip(group, flags) if hit]
+                    store_signal(conn, game_id, "milestones",
+                                 {"ra_id": ra_id, "scenario": scenario, "reached": reached, "total": len(group)}, session_id)
                     last = got
                 except sqlite3.Error:
                     pass  # busy database: offered again next round
@@ -97,8 +108,8 @@ def _poll(db_file: Path, game_id: int, session_id: int, ra_id: int, code: str, i
 
 
 def start(conn: sqlite3.Connection, game_id: int, session_id: int, ra_id: int | None, code: str | None, install) -> bool:
-    """Poll in the background for this session if the game has a story and its game id is known."""
-    if ra_id not in STORIES or not code:
+    """Poll in the background for this session if the game is linked to RetroAchievements and its game code is known."""
+    if ra_id is None or not code:
         return False
     # shortcut: a session split by a suspend ends this poller; the next play starts a new one (as in presence)
     t = threading.Thread(target=_poll, args=(db_path(), game_id, session_id, ra_id, code, install), daemon=True)
