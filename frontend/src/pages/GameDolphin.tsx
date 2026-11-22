@@ -8,32 +8,58 @@ const num = (v: number | undefined) => (v === undefined ? "" : String(v));
 const fromNum = (s: string) => (s === "" ? undefined : Number(s));
 
 /** Video and window options. "Padrão" inherits: from Dolphin for the defaults, from the defaults for a game. */
-export function VideoForm({ value, onChange, inherit }: { value: VideoSettings; onChange: (v: VideoSettings) => void; inherit: string }) {
+export function VideoForm({ value, onChange, inherit, grouped = false }: {
+  value: VideoSettings; onChange: (v: VideoSettings) => void; inherit: string; grouped?: boolean;
+}) {
   const set = (patch: Partial<VideoSettings>) => onChange({ ...value, ...patch });
+  const renderFields = (
+    <>
+      <Field label="Backend de vídeo">
+        <Select value={value.backend ?? ""} label="Backend de vídeo" onChange={(v) => set({ backend: (v || undefined) as VideoSettings["backend"] })}
+          options={[{ value: "", label: inherit }, { value: "Vulkan", label: "Vulkan" }, { value: "OGL", label: "OpenGL" }]} />
+      </Field>
+      <Field label="Placa de vídeo">
+        <Select value={value.gpu ?? ""} label="Placa de vídeo" onChange={(v) => set({ gpu: (v || undefined) as VideoSettings["gpu"] })}
+          options={[{ value: "", label: inherit }, { value: "nvidia", label: "NVIDIA (dedicada)" }]} />
+      </Field>
+    </>
+  );
+  const qualityFields = (
+    <>
+      <Field label="Resolução interna">
+        <Select value={num(value.internal_resolution)} label="Resolução interna" onChange={(v) => set({ internal_resolution: fromNum(v) })}
+          options={[{ value: "", label: inherit }, ...[1, 2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: `${n}x${n === 1 ? " · nativa" : n === 3 ? " · ~1080p" : n === 6 ? " · ~4K" : ""}` }))]} />
+      </Field>
+      <Field label="Filtragem anisotrópica">
+        <Select value={num(value.anisotropy)} label="Filtragem anisotrópica" onChange={(v) => set({ anisotropy: fromNum(v) })}
+          options={[{ value: "", label: inherit }, ...[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: `${2 ** n}x` }))]} />
+      </Field>
+      <Tri label="VSync" value={value.vsync} onChange={(vsync) => set({ vsync })} />
+      <Tri label="Texturas HD" value={value.hires_textures} onChange={(hires_textures) => set({ hires_textures })} />
+      <Tri label="Pré-carregar texturas" value={value.prefetch_textures} onChange={(prefetch_textures) => set({ prefetch_textures })} />
+    </>
+  );
+
   return (
     <div className="stack">
-      <div className="form-grid">
-        <Field label="Backend de vídeo">
-          <Select value={value.backend ?? ""} label="Backend de vídeo" onChange={(v) => set({ backend: (v || undefined) as VideoSettings["backend"] })}
-            options={[{ value: "", label: inherit }, { value: "Vulkan", label: "Vulkan" }, { value: "OGL", label: "OpenGL" }]} />
-        </Field>
-        <Field label="Placa de vídeo">
-          <Select value={value.gpu ?? ""} label="Placa de vídeo" onChange={(v) => set({ gpu: (v || undefined) as VideoSettings["gpu"] })}
-            options={[{ value: "", label: inherit }, { value: "nvidia", label: "NVIDIA (dedicada)" }]} />
-        </Field>
-        <Field label="Resolução interna">
-          <Select value={num(value.internal_resolution)} label="Resolução interna" onChange={(v) => set({ internal_resolution: fromNum(v) })}
-            options={[{ value: "", label: inherit }, ...[1, 2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: `${n}x${n === 1 ? " · nativa" : n === 3 ? " · ~1080p" : n === 6 ? " · ~4K" : ""}` }))]} />
-        </Field>
-        <Field label="Filtragem anisotrópica">
-          <Select value={num(value.anisotropy)} label="Filtragem anisotrópica" onChange={(v) => set({ anisotropy: fromNum(v) })}
-            options={[{ value: "", label: inherit }, ...[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: `${2 ** n}x` }))]} />
-        </Field>
-        <Tri label="VSync" value={value.vsync} onChange={(vsync) => set({ vsync })} />
-        <Tri label="Texturas HD" value={value.hires_textures} onChange={(hires_textures) => set({ hires_textures })} />
-        <Tri label="Pré-carregar texturas" value={value.prefetch_textures} onChange={(prefetch_textures) => set({ prefetch_textures })} />
-      </div>
-      <details>
+      {grouped ? (
+        <div className="ofc-video-groups">
+          <div className="ofc-field-group">
+            <span className="eyebrow">Renderização</span>
+            <div className="form-grid">{renderFields}</div>
+          </div>
+          <div className="ofc-field-group">
+            <span className="eyebrow">Imagem e texturas</span>
+            <div className="form-grid">{qualityFields}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="form-grid">
+          {renderFields}
+          {qualityFields}
+        </div>
+      )}
+      <details className={grouped ? "ofc-disclosure" : undefined}>
         <summary>Janela e teclado</summary>
         <div className="stack" style={{ marginTop: 14 }}>
           <p className="muted" style={{ fontSize: 13 }}>
