@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ArrowUpRight, ChevronLeft, ChevronRight, Clock3, Disc3, Eye, FolderPlus, Gamepad2, LayoutGrid, List, Play, Search } from "lucide-react";
 import type { Ctx } from "../App";
-import { api, formatDuration, Game, GameTime } from "../api";
+import { formatDuration, Game, GameTime } from "../api";
 import { collectEditions, editionTitle } from "../collection";
 import { GameMedia } from "../GameMedia";
 import { Cover, localDate, platformName, splitTitle } from "../ui";
@@ -87,18 +87,11 @@ function Spotlight({ discs, history, isRecent, index, count, browse, play }: {
   );
 }
 
-export function Library({ games, play }: Ctx) {
-  const [selection, setSelection] = useState<number | null>(null);
+export function Library({ games, history, selection, setSelection, play }: Ctx) {
   const shelf = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>(savedView);
   const [query, setQuery] = useState("");
   const [platform, setPlatform] = useState<string | null>(null);
-  const [history, setHistory] = useState<GameTime[]>([]);
-  useEffect(() => {
-    let active = true;
-    api.statsGames().then(rows => { if (active) setHistory(rows); }).catch(() => undefined);
-    return () => { active = false; };
-  }, [games]);
   const editions = useMemo(() => collectEditions(games), [games]);
   const identified = editions.filter(([g]) => g.identified);
   const unknown = games.filter(g => !g.identified).length;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Check, Flag, Image, LayoutDashboard, LucideIcon, Monitor, Play, Trophy } from "lucide-react";
 import type { Ctx } from "../App";
-import { AchievementSummary, api, formatDuration, GameTime, Milestones } from "../api";
+import { AchievementSummary, api, formatDuration, GameTime, Milestones, Profile } from "../api";
 import { Cover, Eye, localDate, platformName, splitTitle } from "../ui";
 import { collectEditions, discNumber, editionTitle } from "../collection";
 import { GameAchievements } from "./GameAchievements";
@@ -28,6 +28,8 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
   const [tab, setTab] = useState<Tab>("summary"); // always one section open; the summary is the first thing you see
   useEffect(() => { setTab("summary"); }, [id]);
   const [story, setStory] = useState<Milestones | null>(null);
+  const [profileMeta, setProfileMeta] = useState<Profile | null>(null);
+  const [profileTick, setProfileTick] = useState(0);
   // the story is read while the game runs: ask again when a play starts or ends
   useEffect(() => {
     let active = true;
@@ -41,6 +43,13 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
     api.statsGames().then(rows => { if (active) setHistory(rows); }).catch(() => undefined);
     return () => { active = false; };
   }, [id, game?.seconds_played]);
+  useEffect(() => {
+    setProfileMeta(null);
+    if (!game?.dolphin || !info?.detected) return;
+    let active = true;
+    api.profile(id).then(p => { if (active) setProfileMeta(p); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [id, game?.dolphin, info?.detected, profileTick]);
   useEffect(() => { setSummary(editionSummary); }, [editionSummary]);
 
   if (!game) {
@@ -55,6 +64,8 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
   if (story?.supported) tabs.push(["story", "Marcos da história"]);
   if (game.dolphin && info) tabs.push(["video", "Vídeo"], ["textures", "Texturas HD"]);
   const active: Tab = tabs.some(([k]) => k === tab) ? tab : "summary"; // a section this game does not have falls back to the summary
+  const hasVideoOverride = !!profileMeta && Object.values(profileMeta.settings).some((v) => v !== undefined);
+  const hasTextures = !!profileMeta?.textures?.installed;
 
   return (
     <>
@@ -94,18 +105,27 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
       <div className="tabs" role="tablist" aria-label="Seções do jogo">
         {tabs.map(([k, label]) => {
           const Icon = TAB_ICON[k];
-          return <button key={k} role="tab" id={`tab-${k}`} aria-selected={active === k} aria-controls="game-panel" onClick={() => setTab(k)}><Icon size={15} aria-hidden="true" /> {label}</button>;
+          const badge = k === "achievements" && summary ? `${summary.earned}/${summary.total}`
+            : k === "story" && story?.supported && story.total > 0 ? `${story.reached}/${story.total}` : null;
+          const dot = (k === "video" && hasVideoOverride) || (k === "textures" && hasTextures);
+          return (
+            <button key={k} type="button" role="tab" id={`tab-${k}`} aria-selected={active === k} aria-controls="game-panel" onClick={() => setTab(k)}>
+              <Icon size={15} aria-hidden="true" /> {label}
+              {badge && <span className="tab-count num">{badge}</span>}
+              {dot && <span className="tab-dot" role="img" aria-label="Configurado" />}
+            </button>
+          );
         })}
       </div>
       <div id="game-panel" role="tabpanel" aria-labelledby={`tab-${active}`}>
-        {active === "summary" && <GameSummary game={game} place={place} summary={summary} story={story} time={time} history={!!history} openTab={setTab} />}
+        {active === "summary" && <GameSummary game={game} discs={discs} place={place} summary={summary} story={story} time={time} history={!!history} openTab={setTab} />}
         {active === "achievements" && <>
           <GameAchievements gameId={id} notify={notify} onChange={s => { setSummary(s); refresh().catch(() => undefined); }} />
           <div className="section-gap"><GameAchievementList gameId={id} version={summary?.synced_at ?? null} notify={notify} /></div>
         </>}
         {active === "story" && story?.supported && <GameMilestones story={story} />}
-        {active === "video" && info && <GameVideo gameId={id} notify={notify} />}
-        {active === "textures" && info && <GameTextures gameId={id} info={info} notify={notify} />}
+        {active === "video" && info && <GameVideo gameId={id} notify={notify} onProfileChange={() => setProfileTick((n) => n + 1)} />}
+        {active === "textures" && info && <GameTextures gameId={id} info={info} notify={notify} onProfileChange={() => setProfileTick((n) => n + 1)} />}
       </div>
     </>
   );
