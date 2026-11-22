@@ -91,3 +91,13 @@ def no_presence_network(monkeypatch):
         t.join(timeout=10)
     assert not any(t.is_alive() for t in presence.POLLERS), "a presence poller is still running"
     presence.POLLERS.clear()
+
+
+@pytest.fixture(autouse=True)
+def no_ram_milestones(monkeypatch):
+    """Every play of a Dolphin game would start a RAM poller and fetch rules: not in tests."""
+    from app.collectors import ram_milestones
+
+    monkeypatch.setattr(ram_milestones, "INTERVAL", 0.01)
+    monkeypatch.setattr(ram_milestones, "start", lambda *a, **k: False)
+    yield

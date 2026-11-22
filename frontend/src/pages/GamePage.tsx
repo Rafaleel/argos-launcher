@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Check, Play, Trophy } from "lucide-react";
 import type { Ctx } from "../App";
-import { AchievementSummary, api, formatDuration, GameTime } from "../api";
+import { AchievementSummary, api, formatDuration, GameTime, Milestones } from "../api";
 import { Cover, Eye, localDate, platformName, splitTitle } from "../ui";
 import { collectEditions, discNumber, editionTitle } from "../collection";
 import { GameAchievements } from "./GameAchievements";
+import { GameMilestones } from "./GameMilestones";
 import { GameVideo, GameTextures } from "./GameDolphin";
 
-type Tab = "achievements" | "video" | "textures";
+type Tab = "achievements" | "story" | "video" | "textures";
 
 export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx & { id: number }) {
   const game = games.find(g => g.id === id);
@@ -22,6 +23,15 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
     .map(d => d.presence).filter(p => p !== null)
     .sort((a, b) => (b!.at ?? "").localeCompare(a!.at ?? ""))[0] ?? null;
   const [tab, setTab] = useState<Tab | null>(null);
+  const [story, setStory] = useState<Milestones | null>(null);
+  // the story is read while the game runs: ask again when a play starts or ends
+  useEffect(() => {
+    let active = true;
+    const load = () => api.milestones(id).then(m => { if (active) setStory(m); }).catch(() => undefined);
+    load();
+    const timer = game?.playing ? setInterval(load, 5000) : undefined;
+    return () => { active = false; if (timer) clearInterval(timer); };
+  }, [id, game?.playing, game?.ra_id]);
   useEffect(() => {
     let active = true;
     api.statsGames().then(rows => { if (active) setHistory(rows); }).catch(() => undefined);
@@ -39,6 +49,7 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
   const canPlay = game.identified && game.has_emulator && !game.playing;
   const achievementLabel = summary ? "Conquistas" : game.ra_id ? "Sincronizar conquistas" : "Vincular conquistas";
   const tabs: [Tab, string][] = [["achievements", achievementLabel]];
+  if (story?.supported) tabs.push(["story", "Marcos da história"]);
   if (game.dolphin && info) tabs.push(["video", "Vídeo"], ["textures", "Texturas HD"]);
 
   return (
@@ -66,6 +77,7 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
             {!multi && <div className="fact"><span className="eyebrow">Tempo jogado</span><b>{formatDuration(game.seconds_played)}</b></div>}
             <div className="fact"><span className="eyebrow">{multi ? "Sessões do disco" : "Sessões"}</span><b>{history ? time?.sessions ?? 0 : "—"}</b></div>
             <div className="fact"><span className="eyebrow">Última vez</span><b>{history ? localDate(time?.last_played ?? null) : "—"}</b></div>
+            {story?.supported && story.total > 0 && <div className="fact"><span className="eyebrow">História</span><b>{story.reached} de {story.total}</b></div>}
             {place && <div className="fact" title={place.at ? `Informado pelo RetroAchievements em ${new Date(place.at).toLocaleString("pt-BR")}` : undefined}>
               <span className="eyebrow">Onde você parou</span><b>{place.message}</b></div>}
           </div>
@@ -87,6 +99,7 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
       </div>
       <div id="game-options">
         {tab === "achievements" && <GameAchievements gameId={id} notify={notify} onChange={s => { setSummary(s); refresh().catch(() => undefined); }} />}
+        {tab === "story" && story?.supported && <GameMilestones story={story} />}
         {tab === "video" && info && <GameVideo gameId={id} notify={notify} />}
         {tab === "textures" && info && <GameTextures gameId={id} info={info} notify={notify} />}
       </div>

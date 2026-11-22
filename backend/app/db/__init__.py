@@ -92,6 +92,10 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(milestones)")}
+    for col, kind in (("ra_achievement_id", "INTEGER"), ("address", "INTEGER"), ("size", "TEXT"), ("value", "INTEGER"), ("gates", "TEXT")):
+        if col not in have:  # the table predates the RAM reader
+            conn.execute(f"ALTER TABLE milestones ADD COLUMN {col} {kind}")
     for suffix in ("", "-wal", "-shm"):  # the database holds the RetroAchievements key, and the WAL holds the same data as the database
         try:
             os.chmod(f"{path}{suffix}", 0o600)
