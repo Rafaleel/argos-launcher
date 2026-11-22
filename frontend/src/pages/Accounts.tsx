@@ -6,6 +6,7 @@ import { Field, Panel } from "../ui";
 
 export function Accounts({ info, notify }: Ctx) {
   const [user, setUser] = useState("");
+  const [savedUser, setSavedUser] = useState("");
   const [key, setKey] = useState("");
   const [hasKey, setHasKey] = useState(false);
   const [dolphin, setDolphin] = useState<DolphinRa | null>(null);
@@ -13,20 +14,20 @@ export function Accounts({ info, notify }: Ctx) {
   const [busy, setBusy] = useState<"" | "save" | "login">("");
 
   useEffect(() => {
-    api.raSettings().then((s) => { setUser(s.user); setHasKey(s.has_key); }).catch((e) => notify(e.message, true));
+    api.raSettings().then((s) => { setUser(s.user); setSavedUser(s.user); setHasKey(s.has_key); }).catch((e) => notify(e.message, true));
     if (info?.detected) api.dolphinRa().then(setDolphin).catch(() => undefined);
   }, [info?.detected, notify]);
 
   const saveAccount = () => {
     setBusy("save");
     api.saveRaSettings(user.trim(), key.trim() === "" ? null : key.trim())
-      .then((s) => { setHasKey(s.has_key); setKey(""); notify("Conta do RetroAchievements salva."); })
+      .then((s) => { setSavedUser(s.user); setHasKey(s.has_key); setKey(""); notify("Conta do RetroAchievements salva."); })
       .catch((e) => notify(e.message, true))
       .finally(() => setBusy(""));
   };
 
   const removeKey = () => api.saveRaSettings(user.trim(), "")
-    .then((s) => { setHasKey(s.has_key); notify("Chave removida."); })
+    .then((s) => { setSavedUser(s.user); setHasKey(s.has_key); notify("Chave removida."); })
     .catch((e) => notify(e.message, true));
 
   const login = () => {
@@ -41,7 +42,7 @@ export function Accounts({ info, notify }: Ctx) {
     .then((s) => { setDolphin(s); notify("Dolphin desconectado do RetroAchievements."); })
     .catch((e) => notify(e.message, true));
 
-  const accountReady = !!user.trim() && hasKey;
+  const accountReady = !!savedUser && hasKey;
 
   return (
     <div className="ofc-stack">
@@ -59,7 +60,7 @@ export function Accounts({ info, notify }: Ctx) {
             {accountReady ? <CheckCircle2 size={15} aria-hidden="true" /> : <KeyRound size={15} aria-hidden="true" />}
             <div>
               <span>Chave da API</span>
-              <strong>{accountReady ? `@${user}` : "Não configurada"}</strong>
+              <strong>{accountReady ? `@${savedUser}` : "Não configurada"}</strong>
             </div>
           </div>
           {info?.detected && (

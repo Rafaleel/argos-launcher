@@ -52,6 +52,8 @@ const periodFull = (p: string, by: By) => {
 export function Stats({ games }: { games: Game[] }) {
   const [platforms, setPlatforms] = useState<PlatformTime[]>([]);
   const [top, setTop] = useState<GameTime[] | null>(null);
+  const [topError, setTopError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [periodsState, setPeriodsState] = useState<{ by: By; rows: Period[] }>({ by: "day", rows: [] });
   const [dailyRows, setDailyRows] = useState<Period[]>([]);
   const [by, setBy] = useState<By>("day");
@@ -61,18 +63,27 @@ export function Stats({ games }: { games: Game[] }) {
 
   useEffect(() => {
     let alive = true;
+    setTopError("");
     api.statsPlatforms().then((r) => { if (alive) setPlatforms(r); }).catch(() => undefined);
-    api.statsGames().then((r) => { if (alive) setTop(r); }).catch(() => { if (alive) setTop([]); });
-    api.statsPeriods("day").then((r) => { if (alive) setDailyRows(r); }).catch(() => undefined);
+    api.statsGames()
+      .then((r) => { if (alive) { setTop(r); setTopError(""); } })
+      .catch((e) => { if (alive) setTopError(e instanceof Error ? e.message : String(e)); });
     return () => { alive = false; };
-  }, [games]);
+  }, [games, retry]);
 
   useEffect(() => {
     let alive = true;
     setActivePeriod(null);
-    api.statsPeriods(by).then((rows) => { if (alive) setPeriodsState({ by, rows }); }).catch(() => undefined);
+    api.statsPeriods(by).then((rows) => {
+      if (!alive) return;
+      setPeriodsState({ by, rows });
+      if (by === "day") setDailyRows(rows);
+    }).catch(() => undefined);
+    if (by !== "day") {
+      api.statsPeriods("day").then((rows) => { if (alive) setDailyRows(rows); }).catch(() => undefined);
+    }
     return () => { alive = false; };
-  }, [by, games]);
+  }, [by, games, retry]);
 
   const gameMap = useMemo(() => new Map(games.map((g) => [g.id, g])), [games]);
 
@@ -95,6 +106,18 @@ export function Stats({ games }: { games: Game[] }) {
       };
     }).sort((a, b) => b.seconds - a.seconds);
   }, [top, gameMap]);
+
+  if (top === null && topError) {
+    return (
+      <div className="act-stack">
+        <div role="alert" className="note warn">
+          Não foi possível carregar as estatísticas ({topError}).{" "}
+          <button type="button" className="btn" onClick={() => setRetry((n) => n + 1)}>Tentar novamente</button>
+        </div>
+        <Journal games={games} />
+      </div>
+    );
+  }
 
   if (top === null) {
     return (

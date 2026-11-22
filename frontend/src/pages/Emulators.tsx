@@ -274,7 +274,7 @@ function DolphinWorkbench({ info, notify, refresh }: { info: DolphinInfo; notify
   );
 }
 
-export function Emulators({ games, info, notify, refresh }: Ctx) {
+export function Emulators({ games, info, notify, refresh, refreshDolphin }: Ctx) {
   const [emulators, setEmulators] = useState<Emulator[]>([]);
   const [options, setOptions] = useState<Record<string, EmulatorOption[]>>({});
 
@@ -319,7 +319,7 @@ export function Emulators({ games, info, notify, refresh }: Ctx) {
         )}
       </Panel>
 
-      {info?.detected && <DolphinWorkbench info={info} notify={notify} refresh={refresh} />}
+      {info?.detected && <DolphinWorkbench info={info} notify={notify} refresh={refreshDolphin} />}
     </div>
   );
 }

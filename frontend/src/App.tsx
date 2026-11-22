@@ -45,6 +45,7 @@ export type Ctx = {
   info: DolphinInfo | null;
   notify: Notify;
   refresh: () => Promise<void>;
+  refreshDolphin: () => Promise<void>;
   play: (g: Game) => void;
 };
 
@@ -64,15 +65,20 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
 
   const notify: Notify = useCallback((text, error = false) => setToast({ text, error }), []);
+  const refreshDolphin = useCallback(async () => {
+    const next = await api.dolphinInfo().catch(() => null);
+    if (next === null) return;
+    setInfo((prev) => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  }, []);
   const refresh = useCallback(async () => {
-    api.dolphinInfo().then(setInfo).catch(() => undefined); // the library must load even if this fails
+    refreshDolphin(); // the library must load even if this fails
     const [nextGames, nextHistory] = await Promise.all([
       api.games(),
       api.statsGames().catch(() => null),
     ]);
     if (nextHistory !== null) setHistory(nextHistory);
     setGames(nextGames);
-  }, []);
+  }, [refreshDolphin]);
 
   // The desktop app starts the backend together with the window: keep trying for a while before giving up.
   useEffect(() => {
@@ -140,7 +146,7 @@ export default function App() {
   const play = (g: Game) =>
     api.play(g.id).then(() => { notify(`Abrindo ${splitTitle(g.title).name}…`); return refresh(); }).catch((e) => notify(e.message, true));
 
-  const ctx: Ctx = { games: games ?? [], history, selection, setSelection, loaded: games !== null, info, notify, refresh, play };
+  const ctx: Ctx = { games: games ?? [], history, selection, setSelection, loaded: games !== null, info, notify, refresh, refreshDolphin, play };
   const activity = route.page === "stats" || route.page === "achievements";
   const workshop = route.page === "emulators" || route.page === "settings" || route.page === "accounts";
   const current = activity ? "Atividade" : workshop ? "Oficina" : "Acervo";

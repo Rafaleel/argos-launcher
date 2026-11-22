@@ -114,7 +114,7 @@ export function GameSummary({ game, discs, place, summary, story, time, history,
             <div className="gm-stat-body">
               <b className="gm-stat-num num">{summary.earned} <small>de {summary.total}</small></b>
               <Meter value={summary.earned} total={summary.total} gold />
-              <p className="muted num">{summary.points_earned} de {summary.points_total} pontos · sync {localDate(summary.synced_at)}</p>
+              <p className="muted num">{summary.points_earned} de {summary.points_total} pontos · sincronizado em {localDate(summary.synced_at)}</p>
             </div>
           ) : (
             <p className="muted gm-stat-empty">
@@ -172,13 +172,18 @@ export function GameSummary({ game, discs, place, summary, story, time, history,
                 : "Carregando histórico…"}
             </p>
           </div>
+          {history && time && time.sessions > 0 && recentDays.length === 0 && (
+            <div className="gm-stat-foot">
+              <a className="btn ghost" href="#/stats">Ver histórico no diário <ArrowRight size={15} /></a>
+            </div>
+          )}
         </section>
       </div>
 
       {recentDays.length > 0 && (
-        <section className="panel gm-recent" aria-label="Sessões recentes deste jogo">
+        <section className="panel gm-recent" aria-label="Sessões nos últimos dias">
           <div className="gm-recent-head">
-            <span className="eyebrow"><BookOpen size={13} aria-hidden="true" /> Sessões recentes deste jogo</span>
+            <span className="eyebrow"><BookOpen size={13} aria-hidden="true" /> Sessões nos últimos dias</span>
             <a className="text-link gm-recent-link" href="#/stats">Ver diário completo <ArrowRight size={14} /></a>
           </div>
           <ul className="gm-recent-list">

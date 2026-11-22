@@ -44,11 +44,12 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
     return () => { active = false; };
   }, [id, game?.seconds_played]);
   useEffect(() => {
-    if (!game?.dolphin || !info) { setProfileMeta(null); return; }
+    setProfileMeta(null);
+    if (!game?.dolphin || !info?.detected) return;
     let active = true;
     api.profile(id).then(p => { if (active) setProfileMeta(p); }).catch(() => undefined);
     return () => { active = false; };
-  }, [id, game?.dolphin, info, profileTick]);
+  }, [id, game?.dolphin, info?.detected, profileTick]);
   useEffect(() => { setSummary(editionSummary); }, [editionSummary]);
 
   if (!game) {

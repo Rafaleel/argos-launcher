@@ -61,11 +61,32 @@ function FolderList({ label, folders, onChange, title, busy }: {
 
 export function Settings({ games, notify, refresh }: Ctx) {
   const [s, setS] = useState<SettingsT | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    api.settings().then(setS).catch((e) => notify(e.message, true));
-  }, [notify]);
+    let active = true;
+    setLoadError("");
+    api.settings()
+      .then((res) => { if (active) { setS(res); setLoadError(""); } })
+      .catch((e) => {
+        if (!active) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setLoadError(msg);
+        notify(msg, true);
+      });
+    return () => { active = false; };
+  }, [notify, retry]);
+
+  if (!s && loadError) {
+    return (
+      <div role="alert" className="note warn">
+        Não foi possível carregar as pastas ({loadError}).{" "}
+        <button type="button" className="btn" onClick={() => setRetry((n) => n + 1)}>Tentar novamente</button>
+      </div>
+    );
+  }
 
   if (!s) {
     return (

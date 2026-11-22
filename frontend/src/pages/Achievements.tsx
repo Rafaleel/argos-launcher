@@ -41,7 +41,7 @@ export function Achievements({ games, info, notify, refresh }: Ctx) {
 
   const rows = useMemo<EditionRow[]>(() => {
     return collectEditions(games)
-      .filter(([g]) => g.identified)
+      .filter((discs) => discs[0].identified || discs.some((d) => d.ra_id !== null || d.achievements !== null))
       .map((discs) => {
         const game = discs.find((d) => d.playing) ?? discs[0];
         const linked = discs.some((d) => d.ra_id !== null);
