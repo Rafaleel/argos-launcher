@@ -87,8 +87,7 @@ function Spotlight({ discs, history, isRecent, index, count, browse, play }: {
   );
 }
 
-export function Library({ games, history, play }: Ctx) {
-  const [selection, setSelection] = useState<number | null>(null);
+export function Library({ games, history, selection, setSelection, play }: Ctx) {
   const shelf = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>(savedView);
   const [query, setQuery] = useState("");

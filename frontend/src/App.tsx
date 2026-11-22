@@ -39,6 +39,8 @@ const NAV = [
 export type Ctx = {
   games: Game[];
   history: GameTime[];
+  selection: number | null;
+  setSelection: (id: number | null) => void;
   loaded: boolean;
   info: DolphinInfo | null;
   notify: Notify;
@@ -57,6 +59,7 @@ export default function App() {
   };
   const [games, setGames] = useState<Game[] | null>(null);
   const [history, setHistory] = useState<GameTime[]>([]);
+  const [selection, setSelection] = useState<number | null>(null);
   const [info, setInfo] = useState<DolphinInfo | null>(null);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
 
@@ -137,7 +140,7 @@ export default function App() {
   const play = (g: Game) =>
     api.play(g.id).then(() => { notify(`Abrindo ${splitTitle(g.title).name}…`); return refresh(); }).catch((e) => notify(e.message, true));
 
-  const ctx: Ctx = { games: games ?? [], history, loaded: games !== null, info, notify, refresh, play };
+  const ctx: Ctx = { games: games ?? [], history, selection, setSelection, loaded: games !== null, info, notify, refresh, play };
   const activity = route.page === "stats" || route.page === "achievements";
   const workshop = route.page === "emulators" || route.page === "settings" || route.page === "accounts";
   const current = activity ? "Atividade" : workshop ? "Oficina" : "Acervo";
