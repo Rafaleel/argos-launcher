@@ -104,7 +104,8 @@ def get_milestones(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
         groups.append({"scenario": g["scenario"], "total": len(mine), "undetectable": g["undetectable"],
                        "reached": sum(m["name"] in done for m in mine) if known else None,
                        "items": [{"name": m["name"], "reached": (m["name"] in done) if known else None} for m in mine]})
-    shown = next((g for g in groups if g["scenario"] == active), groups[0] if groups else None)
+    shown = (next((g for g in groups if g["scenario"] == active), None)
+             or next((g for g in groups if g["total"]), groups[0] if groups else None))
     return {"supported": True, "groups": groups, "active": active if shown and shown["scenario"] == active else None,
             "total": shown["total"] if shown else 0, "reached": (shown["reached"] or 0) if shown else 0,
             "items": [{"name": i["name"], "reached": bool(i["reached"])} for i in shown["items"]] if shown else [],

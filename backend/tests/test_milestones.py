@@ -55,9 +55,9 @@ def test_build_keeps_only_story_types_and_skips_rules_it_cannot_read():
 
 
 def test_build_puts_achievements_without_a_tag_in_one_group():
-    patch = {"Achievements": [ach(1, "Marvin", "Find Marvin", MARVIN, 1)]}
-    items, undetectable = milestones.build(patch, {1: "progression"})
-    assert [m["scenario"] for m in items] == [""] and undetectable == {"": 0}
+    patch = {"Achievements": [ach(1, "Marvin", "Find Marvin", MARVIN, 1), ach(2, "G2", "Defeat G-Type 2", G2, 2)]}
+    items, undetectable = milestones.build(patch, {1: "progression", 2: "progression"})
+    assert [m["scenario"] for m in items] == ["", ""] and undetectable == {"": 0}
 
 
 def test_save_load_and_groups_round_trip_and_replace(conn):
@@ -135,3 +135,16 @@ def test_an_expired_dolphin_token_points_at_dolphins_login_not_the_api_key(monke
     with pytest.raises(ra.RAError, match="Dolphin") as err:
         ra.fetch_patch(3176, "rafaleel", "tok3n1234")
     assert "chave de API" not in str(err.value)
+
+
+def test_a_scenario_with_one_readable_rule_takes_only_the_scenario_byte_as_its_gate():
+    room = "0xH00170000=7_"  # a room check inside the one rule: not a scenario, it must not become a gate
+    claire = ach(9, "Claire", "[Claire A] Something", "0xR00163da7=0_0xH00163db6=1_" + room + "d0xN00168a90=0_0xN00168a90=1" + TAIL, 9)
+    patch = {"Achievements": [PATCH["Achievements"][0], PATCH["Achievements"][2], claire]}  # Marvin and G2 share the scenario byte
+    items, _ = milestones.build(patch, KINDS)
+    assert [m["gates"] for m in items if m["scenario"] == "Claire A"] == [[(0x163DB6, "H", 1)]]
+
+
+def test_a_lone_rule_with_no_other_scenario_to_say_which_byte_is_the_scenario_is_left_out():
+    patch = {"Achievements": [ach(1, "Marvin", "[Leon A] Find Marvin", MARVIN, 1)]}
+    assert milestones.build(patch, KINDS) == ([], {"Leon A": 1})  # its conditions could be a room: no safe gate

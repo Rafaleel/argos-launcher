@@ -61,3 +61,25 @@ def test_a_game_with_rows_from_before_scenarios_says_they_will_be_rebuilt():
     conn.commit()
     body = TestClient(app, base_url="http://127.0.0.1").get(f"/api/games/{gid}/milestones").json()
     assert body["supported"] and body["total"] == 0 and "remontados" in body["problem"]  # the tab stays, with the reason
+
+
+def test_relinking_to_another_set_drops_the_milestones_of_the_old_one():
+    from app.collectors import ra_store
+    conn = connect()
+    gid = make_game(conn, 3176)
+    items, undetectable = milestones.build(PATCH, KINDS)
+    milestones.save(conn, gid, items, undetectable)
+    ra_store.set_ra_id(conn, gid, 3176)  # the same link again: nothing changes
+    assert milestones.load(conn, gid)
+    ra_store.set_ra_id(conn, gid, 999)
+    assert milestones.load(conn, gid) == [] and milestones.groups(conn, gid) == []
+
+
+def test_before_any_reading_the_page_shows_the_first_scenario_that_has_milestones():
+    ram_milestones.PROBLEMS.clear()
+    conn = connect()
+    gid = make_game(conn, 3176)
+    items, _ = milestones.build(PATCH, KINDS)
+    milestones.save(conn, gid, [m for m in items if m["scenario"] == "Claire A"], {"Leon A": 3, "Claire A": 0})  # Leon A has none readable
+    body = TestClient(app, base_url="http://127.0.0.1").get(f"/api/games/{gid}/milestones").json()
+    assert body["active"] is None and body["total"] == 1 and [i["name"] for i in body["items"]] == ["Claire"]

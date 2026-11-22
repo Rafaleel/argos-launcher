@@ -22,7 +22,9 @@ def build(patch: dict, kinds: dict[int, str]) -> tuple[list[dict], dict[str, int
     follows the story). Several achievements can share one flag (the scenario's end); the first one names it.
     A milestone counts only while its `gates` hold: the plain byte checks every rule of the scenario has in
     common, which in Resident Evil 2 is the scenario in play (0 = Leon A).
-    shortcut: "common byte check = scenario" is a guess that fits RE2; confirm it on the next game."""
+    shortcut: "common byte check = scenario" is a guess that fits RE2; confirm it on the next game.
+    A scenario with one readable rule has no "common" to take, so it keeps only the bytes the other scenarios
+    share; with none to compare against it is left out."""
     picked: dict[str, list] = {}
     undetectable: dict[str, int] = {}
     for a in patch["Achievements"]:
@@ -37,19 +39,30 @@ def build(patch: dict, kinds: dict[int, str]) -> tuple[list[dict], dict[str, int
             picked.setdefault(scenario, []).append((a, flag, set(core_conditions(rule))))
         else:
             undetectable[scenario] += 1
+    def byte_checks(conditions) -> list[tuple[int, str, int]]:
+        return sorted((int(addr, 16), "H", int(v)) for c in conditions if (m := _BYTE_EQUALS.match(c)) for addr, v in [m.groups()])
+
+    common = {sc: byte_checks(set.intersection(*(c for _, _, c in rules))) for sc, rules in picked.items() if len(rules) > 1}
+    # the bytes every scenario with several rules agrees on (RE2: the byte that says Leon A, Leon B, Claire A...)
+    scenario_bytes = set.intersection(*({a for a, _, _ in g} for g in common.values())) if common else set()
     out = []
     for scenario, rules in picked.items():
-        common = set.intersection(*(c for _, _, c in rules))
-        gates = sorted(m.groups() for c in common if (m := _BYTE_EQUALS.match(c)))
+        if scenario in common:
+            gates = common[scenario]
+        else:  # a lone rule: its conditions could be a room or a boss state, so only the scenario byte is trusted
+            gates = byte_checks(rules[0][2]) if scenario_bytes else []
+            gates = [g for g in gates if g[0] in scenario_bytes]
+            if not gates:
+                undetectable[scenario] += len(rules)
+                continue
         seen = set()
         for a, flag, _ in rules:
             key = (flag.operand, flag.value)
             if key in seen:
                 continue
             seen.add(key)
-            gates_here = [(int(addr, 16), "H", int(v)) for addr, v in gates if int(addr, 16) != flag.operand.address]
             out.append({"ra_achievement_id": a["ID"], "name": a["Title"], "scenario": scenario, "address": flag.operand.address,
-                        "size": flag.operand.size, "value": flag.value, "gates": gates_here})
+                        "size": flag.operand.size, "value": flag.value, "gates": [g for g in gates if g[0] != flag.operand.address]})
     return out, undetectable
 
 
