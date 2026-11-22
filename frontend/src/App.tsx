@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, Archive, BarChart3, Clock3, Cpu, FolderOpen, KeyRound, LucideIcon, Moon, Sun, Trophy, Wrench, X } from "lucide-react";
-import { api, DolphinInfo, formatDuration, Game } from "./api";
+import { api, DolphinInfo, formatDuration, Game, GameTime } from "./api";
 import { collectEditions } from "./collection";
 import { Notify, splitTitle } from "./ui";
 import { Library } from "./pages/Library";
@@ -38,6 +38,7 @@ const NAV = [
 
 export type Ctx = {
   games: Game[];
+  history: GameTime[];
   loaded: boolean;
   info: DolphinInfo | null;
   notify: Notify;
@@ -55,13 +56,19 @@ export default function App() {
     setLight(!light);
   };
   const [games, setGames] = useState<Game[] | null>(null);
+  const [history, setHistory] = useState<GameTime[]>([]);
   const [info, setInfo] = useState<DolphinInfo | null>(null);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
 
   const notify: Notify = useCallback((text, error = false) => setToast({ text, error }), []);
   const refresh = useCallback(async () => {
     api.dolphinInfo().then(setInfo).catch(() => undefined); // the library must load even if this fails
-    setGames(await api.games());
+    const [nextGames, nextHistory] = await Promise.all([
+      api.games(),
+      api.statsGames().catch(() => null),
+    ]);
+    if (nextHistory !== null) setHistory(nextHistory);
+    setGames(nextGames);
   }, []);
 
   // The desktop app starts the backend together with the window: keep trying for a while before giving up.
@@ -130,7 +137,7 @@ export default function App() {
   const play = (g: Game) =>
     api.play(g.id).then(() => { notify(`Abrindo ${splitTitle(g.title).name}…`); return refresh(); }).catch((e) => notify(e.message, true));
 
-  const ctx: Ctx = { games: games ?? [], loaded: games !== null, info, notify, refresh, play };
+  const ctx: Ctx = { games: games ?? [], history, loaded: games !== null, info, notify, refresh, play };
   const activity = route.page === "stats" || route.page === "achievements";
   const workshop = route.page === "emulators" || route.page === "settings" || route.page === "accounts";
   const current = activity ? "Atividade" : workshop ? "Oficina" : "Acervo";
