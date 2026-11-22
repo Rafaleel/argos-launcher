@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Play } from "lucide-react";
+import { ArrowLeft, Check, Flag, Image, LayoutDashboard, LucideIcon, Monitor, Play, Trophy } from "lucide-react";
 import type { Ctx } from "../App";
 import { AchievementSummary, api, formatDuration, GameTime, Milestones } from "../api";
 import { Cover, Eye, localDate, platformName, splitTitle } from "../ui";
@@ -11,6 +11,7 @@ import { GameSummary } from "./GameSummary";
 import { GameVideo, GameTextures } from "./GameDolphin";
 
 type Tab = "summary" | "achievements" | "story" | "video" | "textures";
+const TAB_ICON: Record<Tab, LucideIcon> = { summary: LayoutDashboard, achievements: Trophy, story: Flag, video: Monitor, textures: Image };
 
 export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx & { id: number }) {
   const game = games.find(g => g.id === id);
@@ -91,9 +92,10 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
         {summary && <Eye value={summary.earned} total={summary.total} label="conquistas" gold />}
       </div>
       <div className="tabs" role="tablist" aria-label="Seções do jogo">
-        {tabs.map(([k, label]) => (
-          <button key={k} role="tab" id={`tab-${k}`} aria-selected={active === k} aria-controls="game-panel" onClick={() => setTab(k)}>{label}</button>
-        ))}
+        {tabs.map(([k, label]) => {
+          const Icon = TAB_ICON[k];
+          return <button key={k} role="tab" id={`tab-${k}`} aria-selected={active === k} aria-controls="game-panel" onClick={() => setTab(k)}><Icon size={15} aria-hidden="true" /> {label}</button>;
+        })}
       </div>
       <div id="game-panel" role="tabpanel" aria-labelledby={`tab-${active}`}>
         {active === "summary" && <GameSummary game={game} place={place} summary={summary} story={story} time={time} history={!!history} openTab={setTab} />}

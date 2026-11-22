@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Circle, Search } from "lucide-react";
 import { api, RaAchievement } from "../api";
-import { Notify } from "../ui";
+import { Notify, Select } from "../ui";
 
 type Filter = "all" | "earned" | "locked";
 const FILTERS: [Filter, string][] = [["all", "Todas"], ["earned", "Ganhas"], ["locked", "Pendentes"]];
@@ -50,10 +50,8 @@ export function GameAchievementList({ gameId, version, notify }: { gameId: numbe
           ))}
         </div>
         {tags.length > 1 && (
-          <select value={tag} onChange={(e) => setTag(e.target.value)} aria-label="Cenário ou modo">
-            <option value="">Todos os cenários</option>
-            {tags.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <Select value={tag} onChange={setTag} label="Cenário ou modo"
+            options={[{ value: "", label: "Todos os cenários" }, ...tags.map((t) => ({ value: t, label: t }))]} />
         )}
       </div>
       <p className="muted ach-count" aria-live="polite">{shown.length === items.length ? `${items.length} conquistas` : `${shown.length} de ${items.length} conquistas`}</p>
