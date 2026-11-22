@@ -10,14 +10,14 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from app import milestones
 from app.api import Conn
-from app.collectors import ra_store, ram_milestones
+from app.collectors import ra_store, ra_sync, ram_milestones
 from app.collectors.base import latest_signal, store_signal
 from app.editions import edition_ids
 from app.collectors.ra_hash import HASHERS
 from app.collectors.retroachievements import RAError, RetroAchievementsCollector, parse_game_ref, resolve_game_id, summary
 
 router = APIRouter(prefix="/api")
-_sync_lock = threading.Lock()
+_sync_lock = ra_sync.LOCK  # shared with the sync that runs when a session ends
 PAUSE = 1.0  # seconds between calls when syncing many games: the API asks for reasonable use
 
 
@@ -98,14 +98,10 @@ def _sync(conn: sqlite3.Connection, game_id: int) -> dict:
     if ra_store.get_ra_id(conn, game_id) is None:
         raise HTTPException(409, "Informe o ID do jogo no RetroAchievements primeiro")
     try:
-        payload = RetroAchievementsCollector().collect(conn, game_id)
+        ra_sync.sync(conn, game_id)
     except RAError as exc:
         raise HTTPException(502, str(exc)) from exc
-    ra_id = ra_store.get_ra_id(conn, game_id)
-    for disc in edition_ids(conn, game_id):  # one answer covers every disc linked to the same set
-        if disc != game_id and payload and ra_store.get_ra_id(conn, disc) == ra_id:
-            store_signal(conn, disc, "achievements", payload)
-    return current_summary(conn, game_id, ra_id)
+    return current_summary(conn, game_id, ra_store.get_ra_id(conn, game_id))
 
 
 @router.post("/games/{game_id}/ra/sync")

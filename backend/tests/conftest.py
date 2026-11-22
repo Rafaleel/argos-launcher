@@ -85,6 +85,7 @@ def no_presence_network(monkeypatch):
         raise RAError("offline in tests")
 
     monkeypatch.setattr(presence, "fetch", offline)
+    monkeypatch.setattr(presence.ra_sync, "auto_sync", lambda conn, game_id: False)  # no network at the end of a session
     monkeypatch.setattr(presence, "INTERVAL", 0.02)
     yield
     for t in presence.POLLERS:

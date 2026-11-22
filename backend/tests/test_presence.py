@@ -169,3 +169,21 @@ def test_a_busy_database_does_not_kill_the_poller(monkeypatch):
     monkeypatch.setattr(presence, "store_signal", flaky)
     presence._poll(presence.db_path(), 1, sid, "u", KEY, 3176, T0)
     assert conn.execute("SELECT COUNT(*) FROM signals WHERE type = 'presence'").fetchone()[0] == 1  # retried, stored once
+
+
+def test_the_end_of_a_session_syncs_achievements_once_for_the_game(monkeypatch):
+    conn = connect()
+    conn.execute("INSERT INTO games (key, title, platform, identified) VALUES ('k', 'RE2', 'Nintendo - GameCube', 1)")
+    sid = conn.execute("INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (1, '2026-11-20T04:00:00Z', '2026-11-20T04:00:00Z')").lastrowid
+    conn.commit()
+    synced = []
+    monkeypatch.setattr(presence.ra_sync, "auto_sync", lambda c, game_id: synced.append(game_id) or True)
+    monkeypatch.setattr(presence, "fetch", lambda user, key: {"game": 3176, "message": "x", "at": T0})
+    monkeypatch.setattr(presence, "INTERVAL", 0.3)
+    t = threading.Thread(target=presence._poll, args=(presence.db_path(), 1, sid, "u", KEY, 3176, T0))
+    t.start()
+    assert synced == []  # the session is open: nothing yet
+    conn.execute("UPDATE sessions SET ended_at = '2026-11-20T04:30:00Z' WHERE id = ?", (sid,))
+    conn.commit()
+    t.join(timeout=10)
+    assert not t.is_alive() and synced == [1]

@@ -16,7 +16,7 @@ import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.collectors import ra_store
+from app.collectors import ra_store, ra_sync
 from app.collectors.base import store_signal
 from app.collectors.retroachievements import BASE, RAError, get_json
 from app.config import db_path
@@ -65,15 +65,26 @@ def _ended(conn: sqlite3.Connection, session_id: int) -> datetime | None | bool:
     return datetime.fromisoformat(row["ended_at"].replace("Z", "+00:00")) if row["ended_at"] else None
 
 
+def _wait(conn: sqlite3.Connection, session_id: int, seconds: float) -> None:
+    """Sleep, but wake as soon as the session ends: its achievements are synced right then."""
+    until = time.monotonic() + seconds
+    while (left := until - time.monotonic()) > 0 and _ended(conn, session_id) is None:
+        time.sleep(min(1.0, left))
+
+
 def _poll(db_file: Path, game_id: int, session_id: int, user: str, key: str, ra_id: int, since: datetime) -> None:
     conn = connect(db_file)
-    last = None
+    last, synced = None, False
     try:
         while True:
             ended = _ended(conn, session_id)
             if ended is True:
                 break
-            time.sleep(INTERVAL)  # the first line arrives a while after the game boots
+            if ended is not None and not synced:
+                # the emulator posts unlocks as they happen, so the site is up to date the moment it closes
+                ra_sync.auto_sync(conn, game_id)
+                synced = True
+            _wait(conn, session_id, INTERVAL)  # the first line arrives a while after the game boots
             try:
                 p = fetch(user, key)
             except RAError:
