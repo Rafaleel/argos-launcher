@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 
 from app.collectors.base import store_signal
-from app.collectors.ra_store import get_credentials, get_ra_id
+from app.collectors.ra_store import get_credentials, get_ra_id, save_catalog
 
 BASE = "https://retroachievements.org/API/"
 DOREQUEST = "https://retroachievements.org/dorequest.php"  # what emulators ask for a game id; no key needed
@@ -137,12 +137,31 @@ def parse_progress(data, ra_id: int) -> dict:
         "earned_hardcore": hard,
         "points_total": sum(points(a) for a in items),
         "points_earned": sum(points(a) for a in earned_items),
+        # the whole set, for the achievements list; collect() keeps it out of the signal and stores it apart
+        "catalog": _catalog(items),
         # only what was earned: enough for the progress filter later, small for big sets
         "earned_list": [
             {"id": _int(_pick(a, "ID", "id")), "points": points(a), "at": str(when(a)[0] or when(a)[1])[:40], "hardcore": bool(when(a)[1])}
             for a in earned_items
         ],
     }
+
+
+def _text(v, limit: int) -> str:
+    return v.strip()[:limit] if isinstance(v, str) else ""
+
+
+def _catalog(items: list[dict]) -> list[dict]:
+    """Every achievement of the set with what to do to earn it, in the site's order. Ids seen twice count once."""
+    out, seen = [], set()
+    for a in sorted(items, key=lambda a: _int(_pick(a, "DisplayOrder", "displayOrder")) or 0):
+        ident = _int(_pick(a, "ID", "id"))
+        if ident is None or ident in seen:
+            continue
+        seen.add(ident)
+        out.append({"id": ident, "title": _text(_pick(a, "Title", "title"), 200), "description": _text(_pick(a, "Description", "description"), 500),
+                    "points": _int(_pick(a, "Points", "points")) or 0, "type": _text(_pick(a, "Type", "type"), 20)})
+    return out
 
 
 def fetch_progress(user: str, key: str, ra_id: int) -> dict:
@@ -212,6 +231,9 @@ class RetroAchievementsCollector:
         if creds is None or ra_id is None:
             return None
         payload = fetch_progress(creds[0], creds[1], ra_id)
+        catalog = payload.pop("catalog", None)  # big and rarely changing: not repeated in every signal
+        if catalog:
+            save_catalog(conn, ra_id, catalog)
         store_signal(conn, game_id, "achievements", payload)
         return payload
 

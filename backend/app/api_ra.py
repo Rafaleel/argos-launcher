@@ -62,6 +62,22 @@ def get_game_ra(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     return {"ra_id": ra_id, "summary": current_summary(conn, game_id, ra_id)}
 
 
+@router.get("/games/{game_id}/achievements")
+def get_achievements(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
+    """Every achievement of the linked set, what it takes to earn it and whether (and when) it was earned,
+    from the last sync. Empty until the first sync stores the list."""
+    _game(conn, game_id)
+    ra_id = ra_store.get_ra_id(conn, game_id)
+    if ra_id is None:
+        return {"ra_id": None, "items": []}
+    signal = latest_signal(conn, game_id, "achievements")
+    earned_list = signal.get("earned_list") if signal and signal.get("ra_id") == ra_id else None
+    earned = {e["id"]: e for e in earned_list or [] if isinstance(e, dict) and isinstance(e.get("id"), int)}
+    items = [{**a, "earned": a["id"] in earned, "at": earned[a["id"]]["at"] if a["id"] in earned else None,
+              "hardcore": bool(earned.get(a["id"], {}).get("hardcore"))} for a in ra_store.get_catalog(conn, ra_id)]
+    return {"ra_id": ra_id, "items": items}
+
+
 @router.get("/games/{game_id}/milestones")
 def get_milestones(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     """Story milestones of a game read from the emulator's RAM: which are reached (from the latest signal),

@@ -43,6 +43,16 @@ CREATE TABLE IF NOT EXISTS sessions (
     ended_at TEXT,
     last_heartbeat TEXT
 );
+CREATE TABLE IF NOT EXISTS ra_achievements (
+    ra_id INTEGER NOT NULL,
+    achievement_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    PRIMARY KEY (ra_id, achievement_id)
+);
 CREATE TABLE IF NOT EXISTS milestones (
     id INTEGER PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES games(id),
