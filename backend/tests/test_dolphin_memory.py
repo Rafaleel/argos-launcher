@@ -1,6 +1,6 @@
 import pytest
 
-from app.emulators.dolphin_memory import MEM1_SIZE, DolphinMemory
+from app.emulators.dolphin_memory import MEM1_SIZE, DolphinMemory, DolphinMemoryError
 
 BASE = 0x1000  # any value works: the reader only seeks to base + address
 
@@ -44,3 +44,17 @@ def test_reads_outside_mem1_are_refused(tmp_path):
     for addr, size in ((-1, 1), (MEM1_SIZE - 1, 2), (0, 0)):
         with pytest.raises(ValueError):
             mem.read(addr, size)
+
+
+def test_dolphin_memory_of_another_size_is_explained(tmp_path):
+    fake_proc(tmp_path, 4, "dolphin-emu", mapping(BASE, 0x4000000, 0, "/dev/shm/dolphin-emu.1") +
+              mapping(BASE * 8, 0x2000000, 0, "/dev/shm/dolphin-emu.1"))
+    with pytest.raises(DolphinMemoryError, match=r"32 MB, 64 MB.*24 MB"):
+        DolphinMemory.attach(str(tmp_path))
+
+
+def test_unreadable_maps_say_it_is_a_permission_problem(tmp_path):
+    fake_proc(tmp_path, 5, "dolphin-emu", "")
+    (tmp_path / "5" / "maps").chmod(0)
+    with pytest.raises(DolphinMemoryError, match="permissão"):
+        DolphinMemory.attach(str(tmp_path))
