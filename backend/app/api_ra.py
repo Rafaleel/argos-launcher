@@ -80,20 +80,35 @@ def get_achievements(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
 
 @router.get("/games/{game_id}/milestones")
 def get_milestones(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
-    """Story milestones of a game read from the emulator's RAM: which are reached (from the latest signal),
-    and why the reader cannot work if it cannot. `supported` is false for games without a hand-picked story."""
+    """Story milestones of a game read from the emulator's RAM, one group per scenario. Only the scenario of the
+    latest reading has a known `reached`; the top-level `total`/`reached`/`items` are that scenario's (or the
+    first group's when nothing was read), which is what the page shows. `supported` is false until the game has
+    milestones or a reason why it cannot have them (`problem`)."""
     _game(conn, game_id)
     ra_id = ra_store.get_ra_id(conn, game_id)
-    if ra_id not in ram_milestones.STORIES:
+    items = milestones.load(conn, game_id) if ra_id else []
+    problem = ram_milestones.PROBLEMS.get(game_id)
+    if not items and not problem and ra_id and milestones.legacy(conn, game_id):
+        problem = "Os marcos deste jogo serão remontados na próxima vez que você jogar pelo Argos."
+    if not items and not problem or ra_id is None:
         return {"supported": False}
-    items = milestones.load(conn, game_id)
     signal = latest_signal(conn, game_id, "milestones")
-    done = signal.get("reached") if signal and signal.get("ra_id") == ra_id else None
-    done = set(done) if isinstance(done, list) else set()
-    return {"supported": True, "total": len(items), "reached": sum(m["name"] in done for m in items),
-            "items": [{"name": m["name"], "reached": m["name"] in done} for m in items],
-            "read_at": signal["synced_at"] if signal and signal.get("ra_id") == ra_id else None,
-            "problem": ram_milestones.PROBLEMS.get(game_id)}
+    if not (signal and signal.get("ra_id") == ra_id):
+        signal = None
+    active = signal.get("scenario") if signal else None
+    done = set(signal["reached"]) if signal and isinstance(signal.get("reached"), list) else set()
+    groups = []
+    for g in milestones.groups(conn, game_id):
+        mine = [m for m in items if m["scenario"] == g["scenario"]]
+        known = g["scenario"] == active
+        groups.append({"scenario": g["scenario"], "total": len(mine), "undetectable": g["undetectable"],
+                       "reached": sum(m["name"] in done for m in mine) if known else None,
+                       "items": [{"name": m["name"], "reached": (m["name"] in done) if known else None} for m in mine]})
+    shown = next((g for g in groups if g["scenario"] == active), groups[0] if groups else None)
+    return {"supported": True, "groups": groups, "active": active if shown and shown["scenario"] == active else None,
+            "total": shown["total"] if shown else 0, "reached": (shown["reached"] or 0) if shown else 0,
+            "items": [{"name": i["name"], "reached": bool(i["reached"])} for i in shown["items"]] if shown else [],
+            "read_at": signal["synced_at"] if signal else None, "problem": problem}
 
 
 @router.put("/games/{game_id}/ra")

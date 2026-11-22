@@ -2,26 +2,39 @@ import json
 import threading
 
 from app import milestones
-from app.collectors import ram_milestones
+from app.collectors import ra_store, ram_milestones
 from app.db import connect
 from app.emulators import dolphin
 from app.emulators.dolphin_memory import DolphinMemoryError
-from tests.test_milestones import PATCH
+from tests.test_milestones import KINDS, PATCH
 
 REAL_START = ram_milestones.start  # the autouse fixture stubs the module's start in every test
-IN_GAME = ((0x163DA4, "S", 1), (0x163DA6, "R", 0))
 
 CODE = "GHAE08"
-SKIPPED = frozenset({2})  # "G2" in the mini patch
+RP = ("Display:\n?0xS163DA4=0?On the Title Screen\n?0xR163DA6=1?Watching a demo\n"
+      "?0xH163DB6=5?Playing as @Char(0xH168A5D)\nWelcome to Raccoon City...\n")
+FULL = {**PATCH, "RichPresencePatch": RP}
+IN_GAME = [(0x163DA4, "S", 1), (0x163DA6, "R", 0)]  # what RP says: not the title screen, not a demo
 
 
-def setup(monkeypatch, patch=PATCH):
-    monkeypatch.setattr(ram_milestones, "STORIES", {3176: ("[Leon A]", SKIPPED, IN_GAME)})
+def catalog(patch=PATCH, kinds=KINDS):
+    return [{"id": a["ID"], "title": a["Title"], "description": a["Description"], "points": 5, "type": kinds.get(a["ID"], "")}
+            for a in patch["Achievements"]]
+
+
+def setup(monkeypatch, patch=PATCH, kinds=KINDS):
     conn = connect()
     conn.execute("INSERT INTO games (key, title, platform, identified) VALUES ('k', 'RE2', 'Nintendo - GameCube', 1)")
     sid = conn.execute("INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (1, '2026-11-21T04:00:00Z', '2026-11-21T04:00:00Z')").lastrowid
+    ra_store.save_catalog(conn, 3176, catalog(patch, kinds))
     conn.commit()
     return conn, sid
+
+
+def stored(conn):
+    """The rows ensure() would store for FULL, so a poller test needs no login."""
+    items, undetectable = milestones.build(FULL, KINDS)
+    milestones.save(conn, 1, [{**m, "gates": [*m["gates"], *IN_GAME]} for m in items], undetectable)
 
 
 class FakeMem:
@@ -65,7 +78,7 @@ def run(conn, sid, mem, monkeypatch, attach=None):
 
     mem.read = read
     monkeypatch.setattr(ram_milestones.DolphinMemory, "attach", attach or (lambda: mem))
-    milestones.save(conn, 1, milestones.build(PATCH, "[Leon A]", SKIPPED))
+    stored(conn)
     t = threading.Thread(target=ram_milestones._poll, args=(ram_milestones.db_path(), 1, sid, 3176, CODE, None))
     t.start(); t.join(timeout=10)
     assert not t.is_alive()
@@ -77,15 +90,21 @@ def test_signals_are_stored_only_when_the_reached_set_changes(monkeypatch):
     mem = FakeMem(conn, sid, [ram(), ram(), ram(marvin=1), ram(marvin=1), ram(marvin=1, end=5)])
     rows = run(conn, sid, mem, monkeypatch)
     assert [r["reached"] for r in rows] == [[], ["Marvin"], ["Marvin", "End"]]
-    assert rows[0]["total"] == 2 and rows[0]["ra_id"] == 3176  # G2 was skipped
+    assert rows[0]["total"] == 3 and rows[0]["ra_id"] == 3176 and rows[0]["scenario"] == "Leon A"  # Marvin, G2, End
 
 
-def test_another_scenario_or_game_stores_nothing(monkeypatch):
+def test_the_scenario_in_play_names_the_signal_and_an_unknown_one_stores_nothing(monkeypatch):
     conn, sid = setup(monkeypatch)
-    assert run(conn, sid, FakeMem(conn, sid, [ram(marvin=1, scenario=1)] * 3), monkeypatch) == []
-    conn2, sid2 = conn, conn.execute("INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (1, '2026-11-21T06:00:00Z', '2026-11-21T06:00:00Z')").lastrowid
-    conn2.commit()
-    assert run(conn2, sid2, FakeMem(conn2, sid2, [ram(marvin=1)] * 3, code=b"GXXE01"), monkeypatch) == []  # Dolphin runs another game
+    rows = run(conn, sid, FakeMem(conn, sid, [ram(marvin=1, scenario=1)] * 3), monkeypatch)
+    assert rows and rows[0]["scenario"] == "Claire A" and rows[0]["reached"] == ["Claire"]
+    sid2 = conn.execute("INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (1, '2026-11-21T06:00:00Z', '2026-11-21T06:00:00Z')").lastrowid
+    conn.commit()
+    conn.execute("DELETE FROM signals")
+    conn.commit()
+    assert run(conn, sid2, FakeMem(conn, sid2, [ram(marvin=1, scenario=2)] * 3), monkeypatch) == []  # no scenario's gates hold
+    sid3 = conn.execute("INSERT INTO sessions (game_id, started_at, last_heartbeat) VALUES (1, '2026-11-21T07:00:00Z', '2026-11-21T07:00:00Z')").lastrowid
+    conn.commit()
+    assert run(conn, sid3, FakeMem(conn, sid3, [ram(marvin=1)] * 3, code=b"GXXE01"), monkeypatch) == []  # Dolphin runs another game
 
 
 def test_dolphin_closing_and_reopening_reattaches(monkeypatch):
@@ -113,19 +132,56 @@ def test_dolphin_closing_and_reopening_reattaches(monkeypatch):
     assert len(attached) >= 2 and rows and rows[0]["reached"] == ["Marvin"]
 
 
-def test_ensure_fetches_once_with_dolphins_login_and_ignores_unknown_games(monkeypatch, tmp_path):
+def logged_in(tmp_path):
+    (tmp_path / "RetroAchievements.ini").write_text("[Achievements]\nUsername = rafaleel\nApiToken = abc12345\n")
+    return dolphin.Install(False, tmp_path, tmp_path)
+
+
+def test_ensure_builds_once_with_dolphins_login_and_stores_the_in_game_gate(monkeypatch, tmp_path):
     conn, _ = setup(monkeypatch)
     install = dolphin.Install(False, tmp_path, tmp_path)
     fetched = []
-    monkeypatch.setattr(ram_milestones, "fetch_patch", lambda *a: fetched.append(a) or PATCH)
+    monkeypatch.setattr(ram_milestones, "fetch_patch", lambda *a: fetched.append(a) or FULL)
     assert ram_milestones.ensure(conn, 1, 3176, install) == []  # Dolphin is not logged in: nothing fetched
-    (tmp_path / "RetroAchievements.ini").write_text("[Achievements]\nUsername = rafaleel\nApiToken = abc12345\n")
-    items = ram_milestones.ensure(conn, 1, 3176, install)
-    assert [m["name"] for m in items] == ["Marvin", "End"] and fetched == [(3176, "rafaleel", "abc12345")]
-    ram_milestones.ensure(conn, 1, 3176, install)
+    assert fetched == []
+    items = ram_milestones.ensure(conn, 1, 3176, logged_in(tmp_path))
+    assert [(m["scenario"], m["name"]) for m in items] == [("Leon A", "Marvin"), ("Leon A", "G2"), ("Leon A", "End"), ("Claire A", "Claire")]
+    assert fetched == [(3176, "rafaleel", "abc12345")]
+    assert [0x163DA4, "S", 1] in items[0]["gates"] and [0x163DA6, "R", 0] in items[0]["gates"]
+    ram_milestones.ensure(conn, 1, 3176, logged_in(tmp_path))
     assert len(fetched) == 1  # stored; not fetched again
-    assert ram_milestones.ensure(conn, 1, 999, install) == []
-    assert REAL_START(conn, 1, 1, 999, CODE, install) is False
+    assert REAL_START(conn, 1, 1, None, CODE, install) is False  # no RetroAchievements link
+    assert REAL_START(conn, 1, 1, 3176, None, install) is False  # no game code
+
+
+def test_a_game_that_cannot_be_built_stores_nothing_and_says_why(monkeypatch, tmp_path):
+    no_gate = {**PATCH, "RichPresencePatch": "Display:\n?0xH1=1?Playing @Val(0xH2)\n"}
+    cases = [  # (catalog kinds, patch, text of the reason)
+        (None, FULL, "Sincronize"),  # achievements never synced: no catalog
+        ({}, FULL, "não tem conquistas de progressão"),
+        (KINDS, no_gate, "rich presence"),
+        ({5: "progression"}, {"Achievements": [PATCH["Achievements"][1]], "RichPresencePatch": RP}, "lida da memória"),  # only Fell, no plain flag
+    ]
+    for n, (kinds, patch, reason) in enumerate(cases):
+        monkeypatch.setenv("ARGOS_DB", str(tmp_path / f"{n}.db"))
+        conn, _ = setup(monkeypatch, PATCH, {} if kinds is None else kinds)
+        if kinds is None:
+            conn.execute("DELETE FROM ra_achievements")
+            conn.commit()
+        monkeypatch.setattr(ram_milestones, "fetch_patch", lambda *a, p=patch: p)
+        ram_milestones.PROBLEMS.clear()
+        assert ram_milestones.ensure(conn, 1, 3176, logged_in(tmp_path)) == []
+        assert reason in ram_milestones.PROBLEMS[1]
+        assert conn.execute("SELECT COUNT(*) FROM milestones").fetchone()[0] == 0
+
+
+def test_rows_saved_before_scenarios_existed_are_rebuilt(monkeypatch, tmp_path):
+    conn, _ = setup(monkeypatch)
+    conn.execute("INSERT INTO milestones (game_id, position, name, address, size, value, gates) VALUES (1, 0, 'Old', 16, 'N', 1, '[]')")
+    conn.commit()
+    monkeypatch.setattr(ram_milestones, "fetch_patch", lambda *a: FULL)
+    assert [m["name"] for m in ram_milestones.ensure(conn, 1, 3176, logged_in(tmp_path))][0] == "Marvin"
+    assert conn.execute("SELECT COUNT(*) FROM milestones WHERE name = 'Old'").fetchone()[0] == 0
 
 
 def test_the_title_screen_does_not_store_an_empty_set_after_progress(monkeypatch):
@@ -142,7 +198,7 @@ def test_problems_are_recorded_and_cleared(monkeypatch, tmp_path):
     install = dolphin.Install(False, tmp_path, tmp_path)
     assert ram_milestones.ensure(conn, 1, 3176, install) == []
     assert "não está logado" in ram_milestones.PROBLEMS[1]
-    (tmp_path / "RetroAchievements.ini").write_text("[Achievements]\nUsername = u\nApiToken = abc12345\n")
+    install = logged_in(tmp_path)
 
     def refused(*a):
         raise ram_milestones.RAError("O RetroAchievements recusou o login do Dolphin (o token pode ter expirado).")
@@ -150,7 +206,7 @@ def test_problems_are_recorded_and_cleared(monkeypatch, tmp_path):
     monkeypatch.setattr(ram_milestones, "fetch_patch", refused)
     assert ram_milestones.ensure(conn, 1, 3176, install) == []
     assert "token" in ram_milestones.PROBLEMS[1]
-    monkeypatch.setattr(ram_milestones, "fetch_patch", lambda *a: PATCH)
+    monkeypatch.setattr(ram_milestones, "fetch_patch", lambda *a: FULL)
     assert ram_milestones.ensure(conn, 1, 3176, install)
     assert 1 not in ram_milestones.PROBLEMS  # fetched fine: the problem is gone
     # unreadable Dolphin memory is recorded by the poller and cleared by the next good read
@@ -173,4 +229,26 @@ def test_another_game_open_is_reported(monkeypatch):
     mem = FakeMem(conn, sid, [ram(marvin=1)] * 3, code=b"GXXE01")
     assert run(conn, sid, mem, monkeypatch) == []  # nothing is read from another game's RAM
     assert "GXXE01" in ram_milestones.PROBLEMS[1]
+    ram_milestones.PROBLEMS.clear()
+
+
+def test_an_address_outside_the_games_ram_is_reported_and_stops_the_poller(monkeypatch):
+    conn, sid = setup(monkeypatch)
+    ram_milestones.PROBLEMS.clear()
+    mem = FakeMem(conn, sid, [ram(marvin=1)] * 3)
+    real_read = mem.read
+
+    def read(a, n):  # what DolphinMemory.read does for an address past its 24 MB
+        if a >= 0x1800000:
+            raise ValueError("fora da RAM do jogo")
+        return real_read(a, n)
+
+    mem.read = read
+    items, undetectable = milestones.build(FULL, KINDS)
+    gate = [(0x1800000, "H", 1)]  # a rich presence gate on memory this reader cannot see
+    milestones.save(conn, 1, [{**m, "gates": [*m["gates"], *gate]} for m in items], undetectable)
+    monkeypatch.setattr(ram_milestones.DolphinMemory, "attach", lambda: mem)
+    t = threading.Thread(target=ram_milestones._poll, args=(ram_milestones.db_path(), 1, sid, 3176, CODE, None))
+    t.start(); t.join(timeout=10)
+    assert not t.is_alive() and "fora da RAM" in ram_milestones.PROBLEMS[1]
     ram_milestones.PROBLEMS.clear()
