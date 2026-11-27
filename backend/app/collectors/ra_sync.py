@@ -19,9 +19,10 @@ def sync(conn: sqlite3.Connection, game_id: int) -> dict | None:
         if disc != game_id and payload and ra_store.get_ra_id(conn, disc) == ra_id:
             store_signal(conn, disc, "achievements", payload)
     if payload:
-        from app import progress
+        from app.progress import engine as progress_engine
         try:
-            progress.recompute(conn, game_id)
+            progress_engine.sync_ra_ttb(conn, game_id)
+            progress_engine.recompute(conn, game_id)
         except sqlite3.Error:
             pass
     return payload

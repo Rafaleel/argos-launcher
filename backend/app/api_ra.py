@@ -95,21 +95,43 @@ def get_milestones(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     signal = latest_signal(conn, game_id, "milestones")
     if not (signal and signal.get("ra_id") == ra_id):
         signal = None
-    active = signal.get("scenario") if signal else None
+    active = signal.get("scenario") if signal and isinstance(signal.get("scenario"), str) else None
     done = set(signal["reached"]) if signal and isinstance(signal.get("reached"), list) else set()
+    # Earned RetroAchievements also prove a story milestone was reached even before a new RAM reading.
+    earned_ids: set[int] = set()
+    ach_synced_at: str | None = None
+    for disc in edition_ids(conn, game_id):
+        ach_sig = latest_signal(conn, disc, "achievements")
+        if ach_sig and ach_sig.get("ra_id") == ra_id and isinstance(ach_sig.get("earned_list"), list):
+            for entry in ach_sig["earned_list"]:
+                if isinstance(entry, dict) and isinstance(entry.get("id"), int):
+                    earned_ids.add(entry["id"])
+            if ach_sig.get("synced_at") and (ach_synced_at is None or ach_sig["synced_at"] > ach_synced_at):
+                ach_synced_at = ach_sig["synced_at"]
     groups = []
     for g in milestones.groups(conn, game_id):
         mine = [m for m in items if m["scenario"] == g["scenario"]]
-        known = g["scenario"] == active
+        ram_known = g["scenario"] == active
+        ach_hits = {m["ra_achievement_id"] for m in mine if m["ra_achievement_id"] in earned_ids}
+        known = ram_known or bool(ach_hits)
+        item_rows = [
+            {
+                "name": m["name"],
+                "reached": (m["name"] in done) if ram_known else ((m["ra_achievement_id"] in ach_hits) if known else None),
+            }
+            for m in mine
+        ]
         groups.append({"scenario": g["scenario"], "total": len(mine), "undetectable": g["undetectable"],
-                       "reached": sum(m["name"] in done for m in mine) if known else None,
-                       "items": [{"name": m["name"], "reached": (m["name"] in done) if known else None} for m in mine]})
-    shown = (next((g for g in groups if g["scenario"] == active), None)
+                       "reached": sum(1 for i in item_rows if i["reached"]) if known else None,
+                       "items": item_rows})
+    shown = (next((g for g in groups if active is not None and g["scenario"] == active), None)
+             or next((g for g in groups if (g["reached"] or 0) > 0), None)
              or next((g for g in groups if g["total"]), groups[0] if groups else None))
+    read_at = signal["synced_at"] if signal and active is not None else (ach_synced_at if shown and (shown["reached"] or 0) > 0 else None)
     return {"supported": True, "groups": groups, "active": active if shown and shown["scenario"] == active else None,
             "total": shown["total"] if shown else 0, "reached": (shown["reached"] or 0) if shown else 0,
             "items": [{"name": i["name"], "reached": bool(i["reached"])} for i in shown["items"]] if shown else [],
-            "read_at": signal["synced_at"] if signal else None, "problem": problem}
+            "read_at": read_at, "problem": problem}
 
 
 @router.put("/games/{game_id}/ra")

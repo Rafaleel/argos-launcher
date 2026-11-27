@@ -36,6 +36,7 @@ def set_ra_id(conn: sqlite3.Connection, game_id: int, ra_id: int | None) -> None
         conn.execute("DELETE FROM milestones WHERE game_id = ?", (game_id,))
         conn.execute("DELETE FROM milestone_groups WHERE game_id = ?", (game_id,))
         conn.execute("DELETE FROM progress_estimates WHERE game_id = ?", (game_id,))
+        conn.execute("DELETE FROM game_progress_config WHERE game_id = ? AND source = 'ra'", (game_id,))
     if ra_id is None:
         conn.execute("DELETE FROM ra_games WHERE game_id = ?", (game_id,))
     else:

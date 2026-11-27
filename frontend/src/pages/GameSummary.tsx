@@ -39,12 +39,14 @@ export function GameSummary({ game, discs, place, summary, story, progress, onPr
 }) {
   const [recentDays, setRecentDays] = useState<{ day: string; seconds: number; sessions: number }[]>([]);
   const [ttbDraft, setTtbDraft] = useState<string>("");
+  const [editingTtb, setEditingTtb] = useState(false);
   const [savingTtb, setSavingTtb] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
   const discKey = discs.map((d) => d.id).join(",");
 
   useEffect(() => {
     setTtbDraft(progress?.ttb_hours != null ? String(progress.ttb_hours) : "");
+    setEditingTtb(false);
   }, [game.id, progress?.ttb_hours]);
 
   async function saveTtb(nextVal: number | null) {
@@ -52,7 +54,14 @@ export function GameSummary({ game, discs, place, summary, story, progress, onPr
     try {
       const updated = await api.saveProgressConfig(game.id, nextVal);
       onProgressChange(updated);
-      notify(nextVal === null ? "Tempo médio removido." : "Tempo médio salvo.");
+      setEditingTtb(false);
+      notify(
+        nextVal === null
+          ? updated.ttb_hours != null
+            ? "Tempo médio automático restaurado."
+            : "Tempo médio removido."
+          : "Tempo médio salvo.",
+      );
     } catch (e) {
       notify(e instanceof Error ? e.message : String(e));
     } finally {
@@ -186,30 +195,52 @@ export function GameSummary({ game, discs, place, summary, story, progress, onPr
           </p>
         )}
 
-        <form className="gm-ttb-form" onSubmit={handleTtbSubmit}>
-          <label className="gm-ttb-label" htmlFor={`ttb-${game.id}`}>
-            <Gauge size={14} aria-hidden="true" /> Tempo médio para zerar (h)
-          </label>
-          <input
-            id={`ttb-${game.id}`}
-            type="number"
-            step="any"
-            min="0.5"
-            max="1000"
-            placeholder="ex.: 10"
-            value={ttbDraft}
-            onChange={(e) => setTtbDraft(e.target.value)}
-            className="gm-ttb-input num"
-          />
-          <button type="submit" className="btn ghost" disabled={savingTtb}>
-            {savingTtb ? "Salvando…" : "Salvar"}
-          </button>
-          {progress?.ttb_hours != null && (
-            <button type="button" className="btn ghost" disabled={savingTtb} onClick={() => saveTtb(null)}>
-              Limpar
+        {editingTtb ? (
+          <form className="gm-ttb-form" onSubmit={handleTtbSubmit}>
+            <label className="gm-ttb-label" htmlFor={`ttb-${game.id}`}>
+              <Gauge size={14} aria-hidden="true" /> Tempo médio para zerar (h)
+            </label>
+            <input
+              id={`ttb-${game.id}`}
+              type="number"
+              step="any"
+              min="0.5"
+              max="1000"
+              placeholder="ex.: 10"
+              value={ttbDraft}
+              onChange={(e) => setTtbDraft(e.target.value)}
+              className="gm-ttb-input num"
+            />
+            <button type="submit" className="btn ghost" disabled={savingTtb}>
+              {savingTtb ? "Salvando…" : "Salvar"}
             </button>
-          )}
-        </form>
+            {progress?.ttb_hours != null && (
+              <button type="button" className="btn ghost" disabled={savingTtb} onClick={() => saveTtb(null)}>
+                Usar automático
+              </button>
+            )}
+            <button type="button" className="btn ghost" onClick={() => setEditingTtb(false)}>
+              Cancelar
+            </button>
+          </form>
+        ) : (
+          <div className="gm-ttb-form">
+            <span className="gm-ttb-label">
+              <Gauge size={14} aria-hidden="true" />
+              {progress?.ttb_hours != null ? (
+                <>
+                  Tempo médio para zerar: <strong className="num">{formatHours(progress.ttb_hours)}</strong>{" "}
+                  <span className="muted">({progress.ttb_source === "ra" ? "RetroAchievements" : "manual"})</span>
+                </>
+              ) : (
+                "Tempo médio obtido automaticamente ao sincronizar com o RetroAchievements."
+              )}
+            </span>
+            <button type="button" className="btn ghost gm-recompute-btn" onClick={() => setEditingTtb(true)}>
+              Ajustar
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="panel gm-place" aria-label="Onde você parou">

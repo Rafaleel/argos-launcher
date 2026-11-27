@@ -17,19 +17,26 @@ def _parse_ts(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
-def get_ttb(conn: sqlite3.Connection, game_id: int) -> float | None:
-    """Manual time-to-beat in hours for a game (shared across discs of an edition)."""
+def get_ttb_info(conn: sqlite3.Connection, game_id: int) -> tuple[float | None, str | None]:
+    """(ttb_hours, source) for a game (shared across discs of an edition). source is 'ra' or 'manual'."""
     ids = edition_ids(conn, game_id)
     placeholders = ",".join("?" * len(ids))
     row = conn.execute(
-        f"SELECT ttb_hours FROM game_progress_config WHERE game_id IN ({placeholders}) AND ttb_hours IS NOT NULL LIMIT 1",
+        f"SELECT ttb_hours, source FROM game_progress_config WHERE game_id IN ({placeholders}) AND ttb_hours IS NOT NULL LIMIT 1",
         ids,
     ).fetchone()
-    return float(row["ttb_hours"]) if row is not None else None
+    if row is None:
+        return None, None
+    return float(row["ttb_hours"]), (row["source"] or "manual")
 
 
-def set_ttb(conn: sqlite3.Connection, game_id: int, ttb_hours: float | None) -> float | None:
-    """Save or clear manual time-to-beat (hours) across all discs of the edition."""
+def get_ttb(conn: sqlite3.Connection, game_id: int) -> float | None:
+    """Time-to-beat in hours for a game (shared across discs of an edition)."""
+    return get_ttb_info(conn, game_id)[0]
+
+
+def set_ttb(conn: sqlite3.Connection, game_id: int, ttb_hours: float | None, source: str = "manual") -> float | None:
+    """Save or clear time-to-beat (hours) across all discs of the edition."""
     ids = edition_ids(conn, game_id)
     with conn:
         if ttb_hours is None:
@@ -38,11 +45,33 @@ def set_ttb(conn: sqlite3.Connection, game_id: int, ttb_hours: float | None) -> 
         else:
             for disc in ids:
                 conn.execute(
-                    "INSERT INTO game_progress_config (game_id, ttb_hours) VALUES (?, ?) "
-                    "ON CONFLICT(game_id) DO UPDATE SET ttb_hours = excluded.ttb_hours",
-                    (disc, float(ttb_hours)),
+                    "INSERT INTO game_progress_config (game_id, ttb_hours, source) VALUES (?, ?, ?) "
+                    "ON CONFLICT(game_id) DO UPDATE SET ttb_hours = excluded.ttb_hours, source = excluded.source",
+                    (disc, float(ttb_hours), source),
                 )
     return float(ttb_hours) if ttb_hours is not None else None
+
+
+def sync_ra_ttb(conn: sqlite3.Connection, game_id: int) -> float | None:
+    """Fetch community median time-to-beat from RetroAchievements unless the user set a manual override."""
+    from app.collectors.retroachievements import RAError, fetch_game_ttb
+
+    existing, source = get_ttb_info(conn, game_id)
+    if existing is not None and source == "manual":
+        return existing
+    creds = ra_store.get_credentials(conn)
+    ids = edition_ids(conn, game_id)
+    ra_id = _edition_ra_id(conn, game_id, ids)
+    if creds is None or ra_id is None:
+        return existing
+    try:
+        hours = fetch_game_ttb(creds[0], creds[1], ra_id)
+    except RAError:
+        return existing
+    if hours is not None:
+        set_ttb(conn, game_id, hours, source="ra")
+        return hours
+    return existing
 
 
 def _load_sessions(conn: sqlite3.Connection, ids: list[int]) -> list[tuple[datetime, datetime]]:

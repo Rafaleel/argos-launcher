@@ -132,9 +132,10 @@ class DiscreteProgressFilter:
             self.last_ram_idx = target
             return True
 
-        # Mix a tiny uniform floor before Bayes update so strong evidence (RAM / achievements)
-        # can override a playtime-only prior even when the player moves much faster than TTB.
-        prior = (1.0 - self.params.prior_floor) * self.belief + (self.params.prior_floor / self.k)
+        # Add a tiny local floor at `target` so strong evidence (RAM / achievements) can override
+        # a playtime-only prior without injecting uniform mass into higher states.
+        prior = (1.0 - self.params.prior_floor) * self.belief
+        prior[target] += self.params.prior_floor
         posterior = prior * like
         total = float(posterior.sum())
         if total <= 1e-15:
@@ -159,7 +160,10 @@ class DiscreteProgressFilter:
         like = np.ones(self.k, dtype=np.float64)
         fp = min(max(self.params.ach_false_pos, 1e-6), 0.5)
         like[:target] = min(fp, 1e-5) if win_reached else fp
-        prior = (1.0 - self.params.prior_floor) * self.belief + (self.params.prior_floor / self.k)
+        # Anchor fallback mass at `target` (never uniformly over [target..k-1]) so larger TTB
+        # values monotonically reduce or preserve the estimate instead of inflating toward 100%.
+        prior = (1.0 - self.params.prior_floor) * self.belief
+        prior[target] += self.params.prior_floor
         posterior = prior * like
         total = float(posterior.sum())
         if total > 1e-15:

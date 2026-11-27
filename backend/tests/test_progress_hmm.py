@@ -100,6 +100,21 @@ def test_monotonicity_and_new_game_plus_reset_detection():
     assert abs(after.mean - 10.0) <= 5.0
 
 
+def test_larger_ttb_never_increases_estimated_progress():
+    kinds = ["progression"] * 14
+    means = []
+    for ttb in (2.0, 4.0, 6.0, 8.0, 9.0, 10.0, 11.0, 12.0, 15.0, 20.0, 30.0):
+        filt = DiscreteProgressFilter.for_milestones(kinds)
+        filt.predict(dt_hours=0.86, ttb_hours=ttb)
+        filt.update_achievements(furthest_idx=2, win_reached=False)
+        est = filt.estimate()
+        assert est.lower <= est.mean <= est.upper
+        means.append(est.mean)
+    # Increasing expected time-to-beat must be monotonically non-increasing in completion %
+    for prev, nxt in zip(means, means[1:]):
+        assert nxt <= prev + 0.1
+
+
 def test_invalid_inputs_raise():
     with pytest.raises(ValueError):
         DiscreteProgressFilter.for_milestones([])

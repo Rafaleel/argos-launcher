@@ -19,7 +19,7 @@ export type ScenarioProgress = {
 };
 export type RemainingHours = { mean: number; min: number; max: number };
 export type GameProgress =
-  | { available: false; ttb_hours: number | null; pace_pct_per_hour: null; remaining_hours: null }
+  | { available: false; ttb_hours: number | null; ttb_source: "ra" | "manual" | null; pace_pct_per_hour: null; remaining_hours: null }
   | {
       available: true;
       mean: number;
@@ -31,6 +31,7 @@ export type GameProgress =
       sources: string[];
       mode: "milestones" | "generic";
       ttb_hours: number | null;
+      ttb_source: "ra" | "manual" | null;
       pace_pct_per_hour: number | null;
       remaining_hours: RemainingHours | null;
       updated_at: string;

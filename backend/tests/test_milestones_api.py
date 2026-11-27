@@ -83,3 +83,18 @@ def test_before_any_reading_the_page_shows_the_first_scenario_that_has_milestone
     milestones.save(conn, gid, [m for m in items if m["scenario"] == "Claire A"], {"Leon A": 3, "Claire A": 0})  # Leon A has none readable
     body = TestClient(app, base_url="http://127.0.0.1").get(f"/api/games/{gid}/milestones").json()
     assert body["active"] is None and body["total"] == 1 and [i["name"] for i in body["items"]] == ["Claire"]
+
+
+def test_earned_achievements_mark_milestones_reached_without_ram_signal():
+    ram_milestones.PROBLEMS.clear()
+    conn = connect()
+    gid = make_game(conn, 3176)
+    items, undetectable = milestones.build(PATCH, KINDS)
+    milestones.save(conn, gid, items, undetectable)
+    # Legacy RAM signal without scenario + synced RA achievements (id 1 = Marvin, id 2 = G2)
+    store_signal(conn, gid, "milestones", {"ra_id": 3176, "reached": ["Marvin"], "total": 12})
+    store_signal(conn, gid, "achievements", {"ra_id": 3176, "earned_list": [{"id": 1, "points": 5, "at": "2026-11-27T10:00:00Z"},
+                                                                            {"id": 2, "points": 10, "at": "2026-11-27T11:00:00Z"}]})
+    body = TestClient(app, base_url="http://127.0.0.1").get(f"/api/games/{gid}/milestones").json()
+    assert body["reached"] == 2 and body["total"] == 3
+    assert [(i["name"], i["reached"]) for i in body["items"]] == [("Marvin", True), ("G2", True), ("End", False)]

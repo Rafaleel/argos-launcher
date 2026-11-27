@@ -189,3 +189,24 @@ def test_migration_commits_milestone_kind_on_reopen(tmp_path):
     row = c2.execute("SELECT kind FROM milestones WHERE id = 1").fetchone()
     c2.close()
     assert row["kind"] == "win_condition"
+
+
+def test_sync_ra_ttb_fetches_automatically_and_respects_manual_override(conn, monkeypatch):
+    from app.collectors import retroachievements
+
+    gid = _add_game(conn, "re2-ttb", "RE2")
+    ra_store.set_credentials(conn, "u", "secretkey123")
+    ra_store.set_ra_id(conn, gid, 3176)
+
+    assert retroachievements.parse_game_ttb({"medianTimeToBeat": 18000, "medianTimeToBeatHardcore": 19800,
+                                             "timesUsedInBeatMedian": 50, "timesUsedInHardcoreBeatMedian": 120}) == 5.5
+    monkeypatch.setattr(retroachievements, "fetch_game_ttb", lambda u, k, r: 5.5)
+
+    assert engine.sync_ra_ttb(conn, gid) == 5.5
+    assert engine.get_ttb_info(conn, gid) == (5.5, "ra")
+
+    # Manual override is never overwritten by automatic RA sync
+    engine.set_ttb(conn, gid, 8.0, source="manual")
+    monkeypatch.setattr(retroachievements, "fetch_game_ttb", lambda u, k, r: 4.0)
+    assert engine.sync_ra_ttb(conn, gid) == 8.0
+    assert engine.get_ttb_info(conn, gid) == (8.0, "manual")

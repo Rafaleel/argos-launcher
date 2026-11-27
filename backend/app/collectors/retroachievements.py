@@ -175,6 +175,34 @@ def fetch_progress(user: str, key: str, ra_id: int) -> dict:
         raise RAError("Resposta inesperada do RetroAchievements.") from None
 
 
+def parse_game_ttb(data) -> float | None:
+    """Median time to beat in hours from API_GetGameProgression, or None when unavailable."""
+    if not isinstance(data, dict):
+        return None
+    secs_hc = _int(_pick(data, "medianTimeToBeatHardcore", "MedianTimeToBeatHardcore"))
+    secs_sc = _int(_pick(data, "medianTimeToBeat", "MedianTimeToBeat"))
+    n_hc = _int(_pick(data, "timesUsedInHardcoreBeatMedian", "TimesUsedInHardcoreBeatMedian")) or 0
+    n_sc = _int(_pick(data, "timesUsedInBeatMedian", "TimesUsedInBeatMedian")) or 0
+    if secs_hc and secs_sc:
+        secs = secs_hc if n_hc >= n_sc else secs_sc
+    else:
+        secs = secs_hc or secs_sc
+    if not secs or secs < 1800:  # ignore missing or < 30 min outliers
+        return None
+    return round(min(1000.0, secs / 3600.0), 1)
+
+
+def fetch_game_ttb(user: str, key: str, ra_id: int) -> float | None:
+    """Fetch community median time-to-beat (hours) from RetroAchievements API_GetGameProgression."""
+    query = urllib.parse.urlencode({"z": user, "y": key, "i": ra_id})
+    try:
+        return parse_game_ttb(get_json(f"{BASE}API_GetGameProgression.php?{query}"))
+    except RAError as exc:
+        raise RAError(str(exc).replace(key, "•••")) from None
+    except (TypeError, ValueError, OverflowError, AttributeError, KeyError, RecursionError):
+        return None
+
+
 def resolve_game_id(md5: str) -> int | None:
     """Ask RetroAchievements which game a hash belongs to (what an emulator does). Sends only the hash."""
     if not re.fullmatch(r"[0-9a-f]{32}", md5):

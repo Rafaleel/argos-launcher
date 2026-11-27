@@ -87,7 +87,8 @@ CREATE TABLE IF NOT EXISTS ra_games (
 CREATE INDEX IF NOT EXISTS idx_signals_game ON signals(game_id, type, id);
 CREATE TABLE IF NOT EXISTS game_progress_config (
     game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
-    ttb_hours REAL
+    ttb_hours REAL,
+    source TEXT
 );
 CREATE TABLE IF NOT EXISTS progress_estimates (
     id INTEGER PRIMARY KEY,
@@ -138,6 +139,10 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
         if col not in pe_have:
             conn.execute(f"ALTER TABLE progress_estimates ADD COLUMN {col} {kind}")
             migrated = True
+    cfg_have = {r["name"] for r in conn.execute("PRAGMA table_info(game_progress_config)")}
+    if "source" not in cfg_have:
+        conn.execute("ALTER TABLE game_progress_config ADD COLUMN source TEXT")
+        migrated = True
     if migrated:
         conn.commit()
     for suffix in ("", "-wal", "-shm"):  # the database holds the RetroAchievements key, and the WAL holds the same data as the database

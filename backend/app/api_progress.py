@@ -24,12 +24,13 @@ def _game(conn: sqlite3.Connection, game_id: int) -> sqlite3.Row:
 
 
 def _progress_response(conn: sqlite3.Connection, game_id: int, est: dict | None) -> dict:
-    ttb = engine.get_ttb(conn, game_id)
+    ttb, ttb_source = engine.get_ttb_info(conn, game_id)
     insights = progress_stats.game_insights(conn, game_id, est=est, ttb_hours=ttb)
     if est is None:
         return {
             "available": False,
             "ttb_hours": ttb,
+            "ttb_source": ttb_source,
             "pace_pct_per_hour": None,
             "remaining_hours": None,
         }
@@ -44,6 +45,7 @@ def _progress_response(conn: sqlite3.Connection, game_id: int, est: dict | None)
         "sources": est["sources"],
         "mode": est["mode"],
         "ttb_hours": ttb,
+        "ttb_source": ttb_source,
         "pace_pct_per_hour": insights["pace_pct_per_hour"],
         "remaining_hours": insights["remaining_hours"],
         "updated_at": est["updated_at"],
@@ -62,7 +64,9 @@ def get_game_progress(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
 @router.put("/games/{game_id}/progress/config")
 def put_game_progress_config(game_id: int, body: ProgressConfigIn, conn: sqlite3.Connection = Conn) -> dict:
     _game(conn, game_id)
-    engine.set_ttb(conn, game_id, body.ttb_hours)
+    engine.set_ttb(conn, game_id, body.ttb_hours, source="manual")
+    if body.ttb_hours is None:
+        engine.sync_ra_ttb(conn, game_id)
     est = engine.recompute(conn, game_id, persist=True, force=True)
     return _progress_response(conn, game_id, est)
 
@@ -70,6 +74,7 @@ def put_game_progress_config(game_id: int, body: ProgressConfigIn, conn: sqlite3
 @router.post("/games/{game_id}/progress/recompute")
 def recompute_game_progress(game_id: int, conn: sqlite3.Connection = Conn) -> dict:
     _game(conn, game_id)
+    engine.sync_ra_ttb(conn, game_id)
     est = engine.recompute(conn, game_id, persist=True, force=True)
     return _progress_response(conn, game_id, est)
 
