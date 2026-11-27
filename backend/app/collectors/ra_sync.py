@@ -18,6 +18,12 @@ def sync(conn: sqlite3.Connection, game_id: int) -> dict | None:
     for disc in edition_ids(conn, game_id):  # one answer covers every disc linked to the same set
         if disc != game_id and payload and ra_store.get_ra_id(conn, disc) == ra_id:
             store_signal(conn, disc, "achievements", payload)
+    if payload:
+        from app import progress
+        try:
+            progress.recompute(conn, game_id)
+        except sqlite3.Error:
+            pass
     return payload
 
 

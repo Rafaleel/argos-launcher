@@ -172,4 +172,9 @@ def _monitor(db_file: Path, session_id: int | None, game_id: int, sid: int, star
     finally:
         if session_id is not None:
             _end(conn, session_id, max(utc_now(), last_seen))
+        try:
+            from app import progress
+            progress.recompute(conn, game_id)
+        except sqlite3.Error:
+            pass
         conn.close()

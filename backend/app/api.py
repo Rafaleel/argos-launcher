@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app import covers
+from app import covers, progress
 from app.collectors import presence, ram_milestones, ra_store
 from app.config import db_path
 from app.editions import edition_ids
@@ -137,6 +137,7 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
            ORDER BY g.platform IS NULL, g.platform, g.title"""
     ).fetchall()
     time = play_time.per_game(conn)
+    estimates = progress.latest_estimates_map(conn)
     ra_ids = {r["game_id"]: r["ra_id"] for r in conn.execute("SELECT game_id, ra_id FROM ra_games")}
     latest = conn.execute(
         """SELECT s.game_id, s.payload, s.timestamp FROM signals s
@@ -169,6 +170,7 @@ def list_games(conn: sqlite3.Connection = Conn) -> list[dict]:
                 "ra_id": ra_ids.get(r["id"]),
                 "achievements": achievements.get(r["id"]),
                 "presence": _presence(places.get(r["id"])),
+                "progress": estimates.get(r["id"]),
                 "dolphin": bool(r["emu_exe"]) and dolphin.detect(r["emu_exe"], json.loads(r["emu_args"])) is not None,
             }
         )

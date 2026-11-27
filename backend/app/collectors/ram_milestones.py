@@ -101,6 +101,11 @@ def _poll(db_file: Path, game_id: int, session_id: int, ra_id: int, code: str, i
                     reached = [m["name"] for m, hit in zip(group, flags) if hit]
                     store_signal(conn, game_id, "milestones",
                                  {"ra_id": ra_id, "scenario": scenario, "reached": reached, "total": len(group)}, session_id)
+                    try:
+                        from app import progress
+                        progress.recompute(conn, game_id)
+                    except sqlite3.Error:
+                        pass
                     last = got
                 except sqlite3.Error:
                     pass  # busy database: offered again next round
