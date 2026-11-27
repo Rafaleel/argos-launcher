@@ -55,14 +55,19 @@ def build(patch: dict, kinds: dict[int, str]) -> tuple[list[dict], dict[str, int
             if not gates:
                 undetectable[scenario] += len(rules)
                 continue
-        seen = set()
+        seen: dict[tuple, dict] = {}
         for a, flag, _ in rules:
             key = (flag.operand, flag.value)
+            kind = kinds.get(a.get("ID"), "progression")
             if key in seen:
+                if kind == "win_condition":
+                    seen[key]["kind"] = "win_condition"
                 continue
-            seen.add(key)
-            out.append({"ra_achievement_id": a["ID"], "name": a["Title"], "scenario": scenario, "address": flag.operand.address,
-                        "size": flag.operand.size, "value": flag.value, "gates": [g for g in gates if g[0] != flag.operand.address]})
+            item = {"ra_achievement_id": a["ID"], "name": a["Title"], "scenario": scenario, "kind": kind,
+                    "address": flag.operand.address, "size": flag.operand.size, "value": flag.value,
+                    "gates": [g for g in gates if g[0] != flag.operand.address]}
+            seen[key] = item
+            out.append(item)
     return out, undetectable
 
 
@@ -71,9 +76,10 @@ def save(conn: sqlite3.Connection, game_id: int, items: list[dict], undetectable
         conn.execute("DELETE FROM milestones WHERE game_id = ?", (game_id,))
         conn.execute("DELETE FROM milestone_groups WHERE game_id = ?", (game_id,))
         conn.executemany(
-            "INSERT INTO milestones (game_id, position, name, ra_achievement_id, address, size, value, gates, scenario)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [(game_id, i, m["name"], m["ra_achievement_id"], m["address"], m["size"], m["value"], json.dumps(m["gates"]), m["scenario"])
+            "INSERT INTO milestones (game_id, position, name, ra_achievement_id, address, size, value, gates, scenario, kind)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(game_id, i, m["name"], m["ra_achievement_id"], m["address"], m["size"], m["value"], json.dumps(m["gates"]),
+              m["scenario"], m.get("kind") or "progression")
              for i, m in enumerate(items)])
         conn.executemany(
             "INSERT INTO milestone_groups (game_id, scenario, position, undetectable) VALUES (?, ?, ?, ?)",
@@ -84,8 +90,9 @@ def load(conn: sqlite3.Connection, game_id: int) -> list[dict]:
     """The stored milestones. Rows without a scenario were saved before scenarios existed, so they also lack the
     in-game gate; they are not returned (the game is rebuilt on its next session)."""
     rows = conn.execute("SELECT * FROM milestones WHERE game_id = ? AND address IS NOT NULL AND scenario IS NOT NULL ORDER BY position", (game_id,))
-    return [{"name": r["name"], "ra_achievement_id": r["ra_achievement_id"], "scenario": r["scenario"], "address": r["address"],
-             "size": r["size"], "value": r["value"], "gates": json.loads(r["gates"] or "[]")} for r in rows]
+    return [{"name": r["name"], "ra_achievement_id": r["ra_achievement_id"], "scenario": r["scenario"],
+             "kind": r["kind"] or "progression", "address": r["address"], "size": r["size"], "value": r["value"],
+             "gates": json.loads(r["gates"] or "[]")} for r in rows]
 
 
 def legacy(conn: sqlite3.Connection, game_id: int) -> bool:

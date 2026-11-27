@@ -35,6 +35,7 @@ def set_ra_id(conn: sqlite3.Connection, game_id: int, ra_id: int | None) -> None
     if get_ra_id(conn, game_id) != ra_id:  # the milestones were built from the old set; they are rebuilt for the new one
         conn.execute("DELETE FROM milestones WHERE game_id = ?", (game_id,))
         conn.execute("DELETE FROM milestone_groups WHERE game_id = ?", (game_id,))
+        conn.execute("DELETE FROM progress_estimates WHERE game_id = ?", (game_id,))
     if ra_id is None:
         conn.execute("DELETE FROM ra_games WHERE game_id = ?", (game_id,))
     else:

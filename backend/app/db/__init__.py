@@ -85,14 +85,22 @@ CREATE TABLE IF NOT EXISTS ra_games (
     ra_id INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_signals_game ON signals(game_id, type, id);
+CREATE TABLE IF NOT EXISTS game_progress_config (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+    ttb_hours REAL
+);
 CREATE TABLE IF NOT EXISTS progress_estimates (
     id INTEGER PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES games(id),
     timestamp TEXT NOT NULL,
     mean REAL NOT NULL,
     lower REAL NOT NULL,
-    upper REAL NOT NULL
+    upper REAL NOT NULL,
+    scenario TEXT,
+    sources TEXT,
+    details TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_progress_game ON progress_estimates(game_id, id);
 """
 
 
@@ -109,10 +117,29 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
+    migrated = False
     have = {r["name"] for r in conn.execute("PRAGMA table_info(milestones)")}
-    for col, kind in (("ra_achievement_id", "INTEGER"), ("address", "INTEGER"), ("size", "TEXT"), ("value", "INTEGER"), ("gates", "TEXT"), ("scenario", "TEXT")):
-        if col not in have:  # the table predates the RAM reader
+    for col, kind in (("ra_achievement_id", "INTEGER"), ("address", "INTEGER"), ("size", "TEXT"), ("value", "INTEGER"), ("gates", "TEXT"), ("scenario", "TEXT"), ("kind", "TEXT")):
+        if col not in have:  # the table predates the RAM reader or phase 5
             conn.execute(f"ALTER TABLE milestones ADD COLUMN {col} {kind}")
+            migrated = True
+    if "kind" not in have:
+        conn.execute(
+            """UPDATE milestones SET kind = COALESCE(
+                   (SELECT a.kind FROM ra_games r JOIN ra_achievements a
+                    ON a.ra_id = r.ra_id AND a.achievement_id = milestones.ra_achievement_id
+                    WHERE r.game_id = milestones.game_id LIMIT 1),
+                   'progression'
+               ) WHERE kind IS NULL"""
+        )
+        migrated = True
+    pe_have = {r["name"] for r in conn.execute("PRAGMA table_info(progress_estimates)")}
+    for col, kind in (("scenario", "TEXT"), ("sources", "TEXT"), ("details", "TEXT")):
+        if col not in pe_have:
+            conn.execute(f"ALTER TABLE progress_estimates ADD COLUMN {col} {kind}")
+            migrated = True
+    if migrated:
+        conn.commit()
     for suffix in ("", "-wal", "-shm"):  # the database holds the RetroAchievements key, and the WAL holds the same data as the database
         try:
             os.chmod(f"{path}{suffix}", 0o600)

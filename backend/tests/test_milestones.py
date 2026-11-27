@@ -37,8 +37,9 @@ def test_build_groups_typed_achievements_by_scenario_and_finds_each_gate():
     items, undetectable = milestones.build(PATCH, KINDS)
     leon = [m for m in items if m["scenario"] == "Leon A"]
     assert [m["name"] for m in leon] == ["Marvin", "G2", "End"]  # Fell is not a plain 0 -> 1 flag; Fast repeats End
-    assert leon[0] == {"ra_achievement_id": 1, "name": "Marvin", "scenario": "Leon A", "address": 0x168A90, "size": "N",
-                       "value": 1, "gates": [(0x163DB6, "H", 0)]}
+    assert leon[0] == {"ra_achievement_id": 1, "name": "Marvin", "scenario": "Leon A", "kind": "progression",
+                       "address": 0x168A90, "size": "N", "value": 1, "gates": [(0x163DB6, "H", 0)]}
+    assert leon[2]["kind"] == "win_condition"
     claire = [m for m in items if m["scenario"] == "Claire A"]
     assert [m["name"] for m in claire] == ["Claire"] and claire[0]["gates"] == [(0x163DB6, "H", 1)]
     assert undetectable == {"Leon A": 1, "Claire A": 0}  # Fell cannot be read from the RAM

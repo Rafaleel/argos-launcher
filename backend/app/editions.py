@@ -13,6 +13,10 @@ def disc_number(title: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+def edition_title(title: str) -> str:
+    return DISC.sub("", title, count=1).strip()
+
+
 def edition_ids(conn: sqlite3.Connection, game_id: int) -> list[int]:
     """Ids of every disc of the game's edition, disc order; just [game_id] for a single-disc game."""
     game = conn.execute("SELECT title, platform, identified FROM games WHERE id = ?", (game_id,)).fetchone()

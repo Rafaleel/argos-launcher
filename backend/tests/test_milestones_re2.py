@@ -55,3 +55,9 @@ def test_every_scenario_group_is_read_only_for_its_own_scenario_byte(re2):
     for value, scenario in enumerate(["Leon A", "Leon B", "Claire A", "Claire B"]):  # 0xH163DB6, from the real rules
         assert milestones.read(re2, ram(a163DB6=value))[0] == scenario
     assert milestones.read(re2, ram(a163DB6=7)) is None  # no scenario of the set: another mode
+
+
+def test_re2_milestones_preserve_win_condition_kind(re2):
+    kinds = {m["kind"] for m in re2}
+    assert kinds == {"progression", "win_condition"}
+    assert any(m["kind"] == "win_condition" for m in re2)
