@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, ArrowUpRight, ChevronLeft, ChevronRight, Clock3, Disc3, Eye, FolderPlus, Gamepad2, LayoutGrid, List, Play, Search } from "lucide-react";
+import { ArrowRight, ArrowUpRight, ChevronLeft, ChevronRight, Clock3, Disc3, Eye, FolderPlus, Gamepad2, Gauge, LayoutGrid, List, Play, Search } from "lucide-react";
 import type { Ctx } from "../App";
 import { formatDuration, Game, GameTime } from "../api";
 import { collectEditions, editionTitle } from "../collection";
@@ -57,6 +57,7 @@ function Spotlight({ discs, history, isRecent, index, count, browse, play }: {
   const title = splitTitle(multi ? editionTitle(game.title) : game.title);
   const latest = discs.map(d => history.get(d.id)?.last_played).filter((date): date is string => !!date).sort().at(-1);
   const seconds = discs.reduce((sum, d) => sum + d.seconds_played, 0);
+  const progress = discs.map(d => d.progress).find(p => p !== null) ?? null;
   const playable = !multi && game.identified && game.has_emulator && !game.playing;
   return (
     <section className="spotlight" aria-label="Jogo em destaque" data-browse>
@@ -74,6 +75,13 @@ function Spotlight({ discs, history, isRecent, index, count, browse, play }: {
           <span><Gamepad2 />{platformName(game.platform)}</span>
           {multi && <span><Disc3 />{discs.length} discos</span>}
           {game.identified && <span><Clock3 />{latest ? `${localDate(latest)} · ${formatDuration(seconds)} no total` : seconds ? formatDuration(seconds) : "Ainda não jogado"}</span>}
+          {progress && (
+            <span className="num">
+              <Gauge />
+              {progress.margin >= 10 ? "~" : ""}{Math.round(progress.mean)}% ± {Math.round(progress.margin)}%
+              {progress.scenario ? ` (${progress.scenario})` : ""}
+            </span>
+          )}
         </div>
         <div className="spot-actions">
           {playable && <button className="btn primary big" onClick={() => play(game)}><Play fill="currentColor" />Jogar</button>}

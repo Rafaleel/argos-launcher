@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Check, Flag, Image, LayoutDashboard, LucideIcon, Monitor, Play, Trophy } from "lucide-react";
 import type { Ctx } from "../App";
-import { AchievementSummary, api, formatDuration, GameTime, Milestones, Profile } from "../api";
+import { AchievementSummary, api, formatDuration, GameProgress, GameTime, Milestones, Profile } from "../api";
 import { Cover, Eye, localDate, platformName, splitTitle } from "../ui";
 import { collectEditions, discNumber, editionTitle } from "../collection";
 import { GameAchievements } from "./GameAchievements";
@@ -28,16 +28,20 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
   const [tab, setTab] = useState<Tab>("summary"); // always one section open; the summary is the first thing you see
   useEffect(() => { setTab("summary"); }, [id]);
   const [story, setStory] = useState<Milestones | null>(null);
+  const [progress, setProgress] = useState<GameProgress | null>(null);
   const [profileMeta, setProfileMeta] = useState<Profile | null>(null);
   const [profileTick, setProfileTick] = useState(0);
   // the story is read while the game runs: ask again when a play starts or ends
   useEffect(() => {
     let active = true;
-    const load = () => api.milestones(id).then(m => { if (active) setStory(m); }).catch(() => undefined);
+    const load = () => {
+      api.milestones(id).then(m => { if (active) setStory(m); }).catch(() => undefined);
+      api.gameProgress(id).then(p => { if (active) setProgress(p); }).catch(() => undefined);
+    };
     load();
     const timer = game?.playing ? setInterval(load, 5000) : undefined;
     return () => { active = false; if (timer) clearInterval(timer); };
-  }, [id, game?.playing, game?.ra_id]);
+  }, [id, game?.playing, game?.ra_id, game?.seconds_played, summary?.synced_at]);
   useEffect(() => {
     let active = true;
     api.statsGames().then(rows => { if (active) setHistory(rows); }).catch(() => undefined);
@@ -118,7 +122,21 @@ export function GamePage({ id, games, loaded, info, notify, refresh, play }: Ctx
         })}
       </div>
       <div id="game-panel" role="tabpanel" aria-labelledby={`tab-${active}`}>
-        {active === "summary" && <GameSummary game={game} discs={discs} place={place} summary={summary} story={story} time={time} history={!!history} openTab={setTab} />}
+        {active === "summary" && (
+          <GameSummary
+            game={game}
+            discs={discs}
+            place={place}
+            summary={summary}
+            story={story}
+            progress={progress}
+            onProgressChange={(p) => { setProgress(p); refresh().catch(() => undefined); }}
+            notify={notify}
+            time={time}
+            history={!!history}
+            openTab={setTab}
+          />
+        )}
         {active === "achievements" && <>
           <GameAchievements gameId={id} notify={notify} onChange={s => { setSummary(s); refresh().catch(() => undefined); }} />
           <div className="section-gap"><GameAchievementList gameId={id} version={summary?.synced_at ?? null} notify={notify} /></div>

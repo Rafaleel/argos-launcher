@@ -1,3 +1,58 @@
+export type ProgressBrief = {
+  mean: number;
+  lower: number;
+  upper: number;
+  margin: number;
+  scenario: string;
+};
+export type ScenarioProgress = {
+  scenario: string;
+  mean: number;
+  lower: number;
+  upper: number;
+  margin: number;
+  furthest: number | null;
+  total: number | null;
+  win_reached: boolean;
+  resets: number;
+  sources: string[];
+};
+export type RemainingHours = { mean: number; min: number; max: number };
+export type GameProgress =
+  | { available: false; ttb_hours: number | null; pace_pct_per_hour: null; remaining_hours: null }
+  | {
+      available: true;
+      mean: number;
+      lower: number;
+      upper: number;
+      margin: number;
+      scenario: string;
+      scenarios: ScenarioProgress[];
+      sources: string[];
+      mode: "milestones" | "generic";
+      ttb_hours: number | null;
+      pace_pct_per_hour: number | null;
+      remaining_hours: RemainingHours | null;
+      updated_at: string;
+    };
+export type InsightGame = {
+  game_id: number;
+  title: string;
+  platform: string | null;
+  seconds: number;
+  sessions: number;
+  last_played: string | null;
+  progress: ProgressBrief | null;
+  pace_pct_per_hour: number | null;
+  remaining_hours: RemainingHours | null;
+  days_idle?: number;
+};
+export type ProgressInsights = {
+  abandoned_days: number;
+  in_progress: InsightGame[];
+  abandoned: InsightGame[];
+};
+
 export type Game = {
   id: number;
   title: string;
@@ -10,6 +65,7 @@ export type Game = {
   ra_id: number | null;
   achievements: AchievementSummary | null;
   presence: { message: string; at: string | null } | null; // last RetroAchievements rich presence line
+  progress: ProgressBrief | null;
 };
 export type Milestones =
   | { supported: false }
@@ -149,5 +205,10 @@ export const api = {
   dolphinRa: () => call<DolphinRa>("/dolphin/achievements"),
   dolphinRaLogin: (user: string, password: string) => call<DolphinRa>("/dolphin/achievements/login", "POST", { user, password }),
   dolphinRaLogout: () => call<DolphinRa>("/dolphin/achievements/login", "DELETE"),
+  gameProgress: (id: number) => call<GameProgress>(`/games/${id}/progress`),
+  saveProgressConfig: (id: number, ttb_hours: number | null) =>
+    call<GameProgress>(`/games/${id}/progress/config`, "PUT", { ttb_hours }),
+  recomputeProgress: (id: number) => call<GameProgress>(`/games/${id}/progress/recompute`, "POST"),
+  statsInsights: (abandonedDays = 30) => call<ProgressInsights>(`/stats/insights?abandoned_days=${abandonedDays}`),
   play: (id: number) => call<{ pid: number; session_id: number }>(`/games/${id}/play`, "POST"),
 };

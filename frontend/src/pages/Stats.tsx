@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, ArrowUpRight, CalendarDays, ChevronDown, ChevronUp, Clock3, Gamepad2, Layers } from "lucide-react";
-import { api, By, formatDuration, Game, GameTime, Period, PlatformTime } from "../api";
+import { ArrowRight, ArrowUpRight, CalendarDays, ChevronDown, ChevronUp, Clock3, Gamepad2, Gauge, Layers, PauseCircle } from "lucide-react";
+import { api, By, formatDuration, Game, GameTime, Period, PlatformTime, ProgressInsights } from "../api";
 import { collectEditions, editionTitle } from "../collection";
 import { Journal } from "./Journal";
 import { Cover, Panel, platformName, splitTitle } from "../ui";
@@ -60,11 +60,13 @@ export function Stats({ games }: { games: Game[] }) {
   const [activePeriod, setActivePeriod] = useState<string | null>(null);
   const [activeHeat, setActiveHeat] = useState<string | null>(null);
   const [showAllGames, setShowAllGames] = useState(false);
+  const [insights, setInsights] = useState<ProgressInsights | null>(null);
 
   useEffect(() => {
     let alive = true;
     setTopError("");
     api.statsPlatforms().then((r) => { if (alive) setPlatforms(r); }).catch(() => undefined);
+    api.statsInsights().then((r) => { if (alive) setInsights(r); }).catch(() => undefined);
     api.statsGames()
       .then((r) => { if (alive) { setTop(r); setTopError(""); } })
       .catch((e) => { if (alive) setTopError(e instanceof Error ? e.message : String(e)); });
@@ -323,6 +325,68 @@ export function Stats({ games }: { games: Game[] }) {
               tone="red"
             />
           </Panel>
+
+          {insights && (insights.in_progress.length > 0 || insights.abandoned.length > 0) && (
+            <Panel
+              title="Progresso e ritmo"
+              sub={<span className="act-panel-meta"><Gauge size={13} aria-hidden="true" /> Estimativas e jogos parados</span>}
+            >
+              {insights.in_progress.length > 0 && (
+                <div className="act-insights-group">
+                  <span className="eyebrow">Em andamento</span>
+                  <ul className="act-insights-list">
+                    {insights.in_progress.slice(0, 6).map((item) => (
+                      <li key={item.game_id} className="act-insight-row">
+                        {gameMap.has(item.game_id) ? (
+                          <a href={`#/game/${item.game_id}`} className="act-insight-title">
+                            {splitTitle(item.title).name}
+                          </a>
+                        ) : (
+                          <span className="act-insight-title">{splitTitle(item.title).name}</span>
+                        )}
+                        <span className="act-insight-meta num">
+                          {item.progress && (
+                            <b>{item.progress.margin >= 10 ? "~" : ""}{Math.round(item.progress.mean)}% ± {Math.round(item.progress.margin)}%</b>
+                          )}
+                          {item.remaining_hours && (
+                            <small>~{item.remaining_hours.mean.toFixed(item.remaining_hours.mean >= 10 ? 0 : 1).replace(".", ",")} h restantes</small>
+                          )}
+                          {item.pace_pct_per_hour != null && item.pace_pct_per_hour > 0 && (
+                            <small>{item.pace_pct_per_hour.toFixed(1).replace(".", ",")}%/h</small>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {insights.abandoned.length > 0 && (
+                <div className="act-insights-group">
+                  <span className="eyebrow"><PauseCircle size={12} aria-hidden="true" /> Parados há {insights.abandoned_days}+ dias</span>
+                  <ul className="act-insights-list">
+                    {insights.abandoned.slice(0, 6).map((item) => (
+                      <li key={item.game_id} className="act-insight-row">
+                        {gameMap.has(item.game_id) ? (
+                          <a href={`#/game/${item.game_id}`} className="act-insight-title">
+                            {splitTitle(item.title).name}
+                          </a>
+                        ) : (
+                          <span className="act-insight-title">{splitTitle(item.title).name}</span>
+                        )}
+                        <span className="act-insight-meta num">
+                          {item.progress && (
+                            <b>{Math.round(item.progress.mean)}% ± {Math.round(item.progress.margin)}%</b>
+                          )}
+                          <small>{item.days_idle} {item.days_idle === 1 ? "dia" : "dias"} sem jogar</small>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Panel>
+          )}
         </div>
       </div>
     </div>
